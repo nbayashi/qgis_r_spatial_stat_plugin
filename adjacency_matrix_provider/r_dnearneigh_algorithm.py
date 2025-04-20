@@ -38,24 +38,10 @@ from qgis.core import (QgsSettings,
                        QgsProcessingParameterFeatureSink,
                        QgsProcessingParameterFileDestination)
 
+from qgis.PyQt.QtGui import QIcon
+
 
 class DnearneighAlgorithm(QgsProcessingAlgorithm):
-    """
-    This is an example algorithm that takes a vector layer and
-    creates a new identical one.
-
-    It is meant to be used as an example of how to create your own
-    algorithms and explain methods and variables used to do it. An
-    algorithm like this will be available in all elements, and there
-    is not need for additional work.
-
-    All Processing algorithms should extend the QgsProcessingAlgorithm
-    class.
-    """
-
-    # Constants used to refer to parameters and outputs. They will be
-    # used when calling the algorithm from another algorithm, or when
-    # calling from the QGIS console.
 
     FIELD = 'FIELD'
     INPUT = 'INPUT'
@@ -70,13 +56,6 @@ class DnearneighAlgorithm(QgsProcessingAlgorithm):
 
 
     def initAlgorithm(self, config):
-        """
-        Here we define the inputs and output of the algorithm, along
-        with some other properties.
-        """
-
-        # We add the input vector features source. It can have any kind of
-        # geometry.
         self.addParameter(
             QgsProcessingParameterVectorLayer(
                 self.INPUT,
@@ -383,6 +362,10 @@ class DnearneighAlgorithm(QgsProcessingAlgorithm):
 
     def name(self):
         return 'dnearneigh'
+    
+    def icon(self):
+        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_dnearneigh.png'))
+
 
     def displayName(self):
         return self.tr('Distance-based Nearest Neighbor')

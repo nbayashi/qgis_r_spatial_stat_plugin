@@ -47,6 +47,8 @@ from qgis.core import (QgsSettings,
                        QgsProcessingParameterFileDestination)
 
 
+from qgis.PyQt.QtGui import QIcon
+
 class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
     """
     This is an example algorithm that takes a vector layer and
@@ -369,6 +371,9 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         formatting characters.
         """
         return 'adjacencymatrix'
+    
+    def icon(self):
+        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_adjacency_matrix.png'))
 
     def displayName(self):
         """

@@ -39,6 +39,8 @@ from qgis.core import (QgsSettings,
                        QgsProcessingParameterFileDestination)
 
 
+from qgis.PyQt.QtGui import QIcon
+
 class KnearneighAlgorithm(QgsProcessingAlgorithm):
 
     INPUT = 'INPUT'
@@ -350,6 +352,10 @@ class KnearneighAlgorithm(QgsProcessingAlgorithm):
 
     def name(self):
         return 'knearneigh'
+
+    def icon(self):
+        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_knearneigh.png'))
+
 
     def displayName(self):
         return self.tr('K-nearest neighbors')
