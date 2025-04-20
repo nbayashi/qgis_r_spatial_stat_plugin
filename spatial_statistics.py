@@ -29,7 +29,7 @@ from qgis.core import QgsProcessingProvider
 from .processing import RScriptProcessingProvider
 from qgis.core import QgsApplication
 
-from .processing_provider.spatial_statistics_provider import SpatialStatisticsProvider
+from .adjacency_matrix_provider.spatial_statistics_provider import SpatialStatisticsProvider
 
 class RRunnerPlugin:
     def __init__(self, iface):
