@@ -12,14 +12,6 @@
         email                : naoya_nstyle@hotmail.co.jp
  ***************************************************************************/
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
 """
 
 __author__ = 'nbayashi'
@@ -32,7 +24,7 @@ __revision__ = '$Format:%H$'
 import os
 from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
-from .r_runner_plugin_dialog import RRunnerPluginDialog
+from .r_spatial_statistics_setting_dialog import RSpatialStatisticsSettingDialog
 from qgis.core import QgsProcessingProvider
 from .processing import RScriptProcessingProvider
 from qgis.core import QgsApplication
@@ -49,9 +41,9 @@ class RRunnerPlugin:
     def initGui(self):
         self.initProcessing()
         icon_path = ''  # Add icon if needed
-        self.action = QAction("R Runner Plugin", self.iface.mainWindow())
+        self.action = QAction("Setting", self.iface.mainWindow())
         self.action.triggered.connect(self.show_dialog)
-        self.iface.addPluginToMenu("R Runner", self.action)
+        self.iface.addPluginToMenu("R Spatial Statistics", self.action)
 
 
     def initProcessing(self):
@@ -59,10 +51,10 @@ class RRunnerPlugin:
         QgsApplication.processingRegistry().addProvider(self.provider)
 
     def unload(self):
-        self.iface.removePluginMenu("R Runner", self.action)
+        self.iface.removePluginMenu("R Spatial Statistics", self.action)
         QgsApplication.processingRegistry().removeProvider(self.provider)
 
 
     def show_dialog(self):
-        self.dialog = RRunnerPluginDialog()
+        self.dialog = RSpatialStatisticsSettingDialog()
         self.dialog.show()

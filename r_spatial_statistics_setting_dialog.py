@@ -3,7 +3,7 @@ from qgis.PyQt.QtWidgets import QDialog
 from qgis.core import QgsSettings
 from qgis.PyQt import uic
 
-class RRunnerPluginDialog(QDialog):
+class RSpatialStatisticsSettingDialog(QDialog):
     def __init__(self):
         super().__init__()
         self.ui = uic.loadUi(
