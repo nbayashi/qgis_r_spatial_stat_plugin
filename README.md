@@ -140,8 +140,6 @@ Distance-decay weights can be enabled optionally.
 
 ---
 
-
-
 ### Distance-based Nearest Neighbors
 
 ![1745166947264](https://file+.vscode-resource.vscode-cdn.net/Users/nbayashi/Library/Application%20Support/QGIS/QGIS3/profiles/default/python/plugins/qgis_r_spatial_stat_plugin/image/README/1745166947264.png)
