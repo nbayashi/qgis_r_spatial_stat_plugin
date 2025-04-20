@@ -36,6 +36,7 @@ QGIS メニューから：[設定] → [オプション] → [R Runner] タブ �
 
 ### Adjacency matrix
 
+
 - ポリゴンレイヤを入力として、**クイーン型** または **ルーク型** のトポロジーに基づく近接行列を生成します。
 - 生成される出力：
   - 近接を示すラインレイヤ（中心点同士の接続）
@@ -48,6 +49,8 @@ QGIS メニューから：[設定] → [オプション] → [R Runner] タブ �
 
 ### Distance-based Nearest Neighbors
 
+![1745166947264](image/README/1745166947264.png)
+
 - ポリゴンまたはポイントの **重心** 座標に対して、
 - **指定した距離範囲内（dmin 〜 dmax）** にある近傍を求めて、近接行列を構築します。
 - 行基準化されたウェイト行列として `.csv` に出力されます。
@@ -55,6 +58,8 @@ QGIS メニューから：[設定] → [オプション] → [R Runner] タブ �
 ---
 
 ### K-nearest Neighbors
+
+![1745166579264](https://file+.vscode-resource.vscode-cdn.net/Users/nbayashi/Library/Application%20Support/QGIS/QGIS3/profiles/default/python/plugins/qgis_r_spatial_stat_plugin/image/README/1745166579264.png)
 
 - 各ジオメトリに対して、**最近傍k個の近傍**を検出し、近接行列を構築します。
 - 特にポイントデータに適していますが、ポリゴンの重心でも動作します。
@@ -123,7 +128,7 @@ Example (Windows):C:\Program Files\R\R-4.3.1\bin\Rscript.exe
 
 All tools are available via the QGIS **Processing Toolbox**.
 
-### Adjacency Matrix
+### Adjacency Matrix![1745166814129](image/README/1745166814129.png)
 
 - Computes a spatial weight matrix using **Queen** or **Rook** adjacency rules based on polygon topology.
 - Outputs include:
@@ -133,7 +138,13 @@ All tools are available via the QGIS **Processing Toolbox**.
 
 Distance-decay weights can be enabled optionally.
 
+---
+
+
+
 ### Distance-based Nearest Neighbors
+
+![1745166947264](https://file+.vscode-resource.vscode-cdn.net/Users/nbayashi/Library/Application%20Support/QGIS/QGIS3/profiles/default/python/plugins/qgis_r_spatial_stat_plugin/image/README/1745166947264.png)
 
 - Calculates neighbors within a specified **distance range (dmin to dmax)** based on centroid coordinates.
 - Outputs a proximity matrix with optional CSV export.
@@ -142,9 +153,11 @@ Distance-decay weights can be enabled optionally.
 
 ### K-nearest Neighbors
 
+![1745166579264](https://file+.vscode-resource.vscode-cdn.net/Users/nbayashi/Library/Application%20Support/QGIS/QGIS3/profiles/default/python/plugins/qgis_r_spatial_stat_plugin/image/README/1745166579264.png)
+
 - Computes neighbors based on the **k nearest** features to each input geometry (e.g., centroids).
 - Suitable for both polygons and point layers.
-- Outputs include a line layer, polygon layer, and weights CSV.
+- Outputs include a line layer, polygon layer, and weights CSV
 
 ---
 
