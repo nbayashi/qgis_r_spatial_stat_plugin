@@ -29,7 +29,7 @@ from qgis.core import QgsProcessingProvider
 from .processing import RScriptProcessingProvider
 from qgis.core import QgsApplication
 
-from .adjacency_matrix_provider.spatial_statistics_provider import SpatialStatisticsProvider
+from .adjacency_matrix_provider.adjacency_matrix_provider import AdjacencyMatrixProvider
 
 class RRunnerPlugin:
     def __init__(self, iface):
@@ -47,7 +47,7 @@ class RRunnerPlugin:
 
 
     def initProcessing(self):
-        self.provider = SpatialStatisticsProvider()
+        self.provider = AdjacencyMatrixProvider()
         QgsApplication.processingRegistry().addProvider(self.provider)
 
     def unload(self):

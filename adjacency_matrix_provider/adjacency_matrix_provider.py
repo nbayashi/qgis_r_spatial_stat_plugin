@@ -36,7 +36,7 @@ from .r_knearneigh_algorithm import KnearneighAlgorithm
 from .r_dnearneigh_algorithm import DnearneighAlgorithm
 
 
-class SpatialStatisticsProvider(QgsProcessingProvider):
+class AdjacencyMatrixProvider(QgsProcessingProvider):
 
     def __init__(self):
         """
