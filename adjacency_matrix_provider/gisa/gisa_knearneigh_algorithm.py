@@ -39,6 +39,7 @@ from qgis.core import (QgsSettings,
 
 
 from qgis.PyQt.QtGui import QIcon
+from ...utils.layer_tools import get_layer_path_or_temp
 
 class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
 
@@ -163,7 +164,7 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
 
 
         # 入力レイヤを一時GPKGとして保存
-        input_path, is_temp = self.get_layer_path_or_temp(input_layer)
+        input_path, is_temp = get_layer_path_or_temp(input_layer)
         input_layer_path = input_path.replace("\\", "/")
        
 

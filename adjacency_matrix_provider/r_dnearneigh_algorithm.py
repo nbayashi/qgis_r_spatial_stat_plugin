@@ -20,6 +20,8 @@ __copyright__ = '(C) 2025 by nbayashi'
 __revision__ = '$Format:%H$'
 import subprocess
 import os
+import uuid
+
 
 import tempfile
 
@@ -39,6 +41,7 @@ from qgis.core import (QgsSettings,
                        QgsProcessingParameterFileDestination)
 
 from qgis.PyQt.QtGui import QIcon
+from ..utils.layer_tools import get_layer_path_or_temp
 
 
 class DnearneighAlgorithm(QgsProcessingAlgorithm):
@@ -168,14 +171,12 @@ class DnearneighAlgorithm(QgsProcessingAlgorithm):
         
 
 
-        # 入力レイヤを一時GPKGとして保存
-        input_path = os.path.join(tempfile.gettempdir(), "input_polygons.gpkg")
-        QgsVectorFileWriter.writeAsVectorFormat(input_layer, input_path, "utf-8", input_layer.crs(), "GPKG")
+        # 入力レイヤのパスを取得
+        input_path, is_temp = get_layer_path_or_temp(input_layer)
 
         # 出力先（Rが書き出す）
-        output_path = os.path.join(tempfile.gettempdir(), "output_neighbors.gpkg")
-        output_poly_path = os.path.join(tempfile.gettempdir(), "nb_polygons.gpkg")
-        
+        output_path = os.path.join(tempfile.gettempdir(), f"output_neighbors_{uuid.uuid4().hex}.gpkg")
+        output_poly_path = os.path.join(tempfile.gettempdir(), f"nb_polygons_{uuid.uuid4().hex}.gpkg")
 
         # Rコードを生成
         r_code = f"""
@@ -351,6 +352,10 @@ class DnearneighAlgorithm(QgsProcessingAlgorithm):
             feedback.reportError("出力ポリゴンレイヤの読み込みに失敗しました。")
         feedback.pushInfo(result.stdout)
 
+
+        os.remove(r_script_file)
+        if is_temp and os.path.exists(input_path):
+            os.remove(input_path)
 
 
         result_dict = {}
