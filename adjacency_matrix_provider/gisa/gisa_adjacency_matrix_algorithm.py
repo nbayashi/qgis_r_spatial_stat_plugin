@@ -203,11 +203,13 @@ class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
         # 入力読み込み
         polygons <- st_read("{input_path}")
-        # 投影座標系に変換（必ず最初に実施）
+        id_field <- "{field_name}"
+        
+        # 地理座標系なら EPSG:3857 に変換（単位：メートル）
         if (grepl("longlat", st_crs(polygons)$proj4string)) {{
+            message("入力データが地理座標系です。EPSG:3857 に投影変換します。")
             polygons <- st_transform(polygons, 3857)
         }}
-        id_field <- "{field_name}"
 
         # 近接構築
         {r_nb_code}
