@@ -263,7 +263,7 @@ class GISADnearneighAlgorithm(QgsProcessingAlgorithm):
 
 
     def displayName(self):
-        return self.tr('Distance-based Nearest Neighbor')
+        return self.tr('GISA(Distance-based Nearest Neighbor)')
 
     def group(self):
         return self.tr('Global Indicator of Spatial Association')

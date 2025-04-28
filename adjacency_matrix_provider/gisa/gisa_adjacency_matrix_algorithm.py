@@ -302,7 +302,7 @@ class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         Returns the translated algorithm name, which should be used for any
         user-visible display of the algorithm name.
         """
-        return self.tr('Adjacency matrix')
+        return self.tr('GISA(Adjacency matrix)')
 
     def group(self):
         return self.tr('Global Indicator of Spatial Association')
