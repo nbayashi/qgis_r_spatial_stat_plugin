@@ -371,7 +371,7 @@ class DnearneighAlgorithm(QgsProcessingAlgorithm):
         return self.tr('Distance-based Nearest Neighbor')
 
     def group(self):
-        return self.tr('R Adjacency Matrix')
+        return self.tr('Adjacency Matrix')
 
     def groupId(self):
         return 'radjacencymatrix'

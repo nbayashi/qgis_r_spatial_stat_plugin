@@ -34,6 +34,9 @@ from qgis.core import QgsProcessingProvider
 from .r_adjacency_matrix_algorithm import AdjacencyMatrixAlgorithm
 from .r_knearneigh_algorithm import KnearneighAlgorithm
 from .r_dnearneigh_algorithm import DnearneighAlgorithm
+from .gisa.gisa_adjacency_matrix_algorithm import GISAAdjacencyMatrixAlgorithm
+from .gisa.gisa_knearneigh_algorithm import GISAKnearneighAlgorithm
+from .gisa.gisa_dnearneigh_algorithm import GISADnearneighAlgorithm
 
 
 class AdjacencyMatrixProvider(QgsProcessingProvider):
@@ -58,8 +61,13 @@ class AdjacencyMatrixProvider(QgsProcessingProvider):
         self.addAlgorithm(AdjacencyMatrixAlgorithm())
         self.addAlgorithm(KnearneighAlgorithm())
         self.addAlgorithm(DnearneighAlgorithm())
+        # add GISA algorithms
+        self.addAlgorithm(GISAAdjacencyMatrixAlgorithm())
+        self.addAlgorithm(GISAKnearneighAlgorithm())
+        self.addAlgorithm(GISADnearneighAlgorithm())
         # add additional algorithms here
         # self.addAlgorithm(MyOtherAlgorithm())
+
 
     def id(self):
         """

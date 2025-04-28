@@ -28,6 +28,7 @@ __copyright__ = '(C) 2025 by nbayashi'
 __revision__ = '$Format:%H$'
 import subprocess
 import os
+import uuid
 
 import tempfile
 
@@ -35,21 +36,18 @@ from qgis.PyQt.QtCore import QCoreApplication
 from qgis.core import (QgsSettings,
                        QgsProcessing,
                        QgsProcessingException,
-                       QgsVectorLayer,
                        QgsVectorFileWriter,
-                       QgsFeatureSink,
                        QgsProcessingAlgorithm,
                        QgsProcessingParameterVectorLayer,
                        QgsProcessingParameterField,
                        QgsProcessingParameterEnum,
                        QgsProcessingParameterBoolean,
-                       QgsProcessingParameterFeatureSink,
                        QgsProcessingParameterFileDestination)
 
 
 from qgis.PyQt.QtGui import QIcon
 
-class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
+class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
     """
     This is an example algorithm that takes a vector layer and
     creates a new identical one.
@@ -69,11 +67,10 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
     FIELD = 'FIELD'
     INPUT = 'INPUT'
+    STATISTICS_TYPE = 'STATISTICS_TYPE'
     NEIGHBOR_TYPE = 'NEIGHBOR_TYPE'
     USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
-    OUTPUT_NODE = 'OUTPUT_NODE'
-    OUTPUT_POLYGONS = 'OUTPUT_POLYGONS'
-    OUTPUT_WEIGHTS_CSV = 'OUTPUT_WEIGHTS_CSV'
+    OUTPUT = 'OUTPUT_'
 
 
 
@@ -102,7 +99,15 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
                         optional=False
                     )
                 )
-
+        
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                name=self.STATISTICS_TYPE,
+                description='Statistics type',
+                options=['Global Moran\'s I', 'Global Geary\'s C','Global Getis-Ord G','Global Getis-Ord G*'],
+                defaultValue=0
+            )
+        )
         # select queen or rook
         self.addParameter(
             QgsProcessingParameterEnum(
@@ -124,34 +129,28 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
 
         
-        self.addParameter(
-            QgsProcessingParameterFeatureSink(
-                self.OUTPUT_NODE,
-                self.tr('Output layer'),
-                optional=True,  
-                createByDefault=True 
-            )
-        )
-
-        self.addParameter(
-            QgsProcessingParameterFeatureSink(
-                name=self.OUTPUT_POLYGONS,
-                description='Polygons with neighbor attributes',
-                optional=True,  
-                createByDefault=True 
-            )
-        )
-        # CSV path
+        # txt
         self.addParameter(
             QgsProcessingParameterFileDestination(
-                name=self.OUTPUT_WEIGHTS_CSV,
-                description='Row-standardized weights matrix (CSV)',
-                fileFilter='CSV files (*.csv)',
+                name=self.OUTPUT,
+                description='Export result txt',
+                fileFilter='TXT (*.txt)',
                 optional=True,  # ← スキップ可
                 createByDefault=False # ← デフォルトで作成しない
             )
         )
 
+    def get_layer_path_or_temp(self, layer):
+        # ファイルベースなら直接返す
+        if layer.storageType().lower() in ["esri shapefile", "gpkg", "geojson", "geopackage"]:
+            return layer.source(), False
+        else:
+            # それ以外なら一時GPKGにエクスポート
+            temp_path = os.path.join(tempfile.gettempdir(), f"input_polygons_{uuid.uuid4().hex}.gpkg")
+            QgsVectorFileWriter.writeAsVectorFormat(layer, temp_path, "utf-8", layer.crs(), "GPKG")
+            return temp_path, True
+       
+       
     def processAlgorithm(self, parameters, context, feedback):
         rscript_path = QgsSettings().value("RRunner/RscriptPath", "")
         # Check if the Rscript path is set
@@ -163,12 +162,16 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # フィールド名を取得
         field_name = self.parameterAsString(parameters, self.FIELD, context)
 
-        output_weights_path = self.parameterAsFile(parameters, self.OUTPUT_WEIGHTS_CSV, context)
+        output = self.parameterAsFile(parameters, self.OUTPUT, context)
 
         
 
         queen = self.parameterAsEnum(parameters, 'NEIGHBOR_TYPE', context) == 0  # True if Queen
         nb_queen = str(queen).upper()  # R側に渡す用
+        if queen:
+            nb_type = "Queen"
+        else:
+            nb_type = "Rook"
 
         use_distance_decay = self.parameterAsBool(parameters, 'USE_DISTANCE_DECAY', context)
         r_use_decay = "TRUE" if use_distance_decay else "FALSE"
@@ -178,16 +181,14 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         r_nb_code = "coords <- st_coordinates(st_centroid(polygons))\n"
         r_nb_code += f'nb <- poly2nb(as(polygons, "Spatial"), queen = {nb_queen})\n'
         
-
+        r_statistic__index = self.parameterAsEnum(parameters, self.STATISTICS_TYPE, context)
+        r_statistic_type = ['Moran\'s I', 'Geary\'s C', 'Getis-Ord G', 'Getis-Ord G*'][r_statistic__index]
+        
 
         # 入力レイヤを一時GPKGとして保存
-        input_path = os.path.join(tempfile.gettempdir(), "input_polygons.gpkg")
-        QgsVectorFileWriter.writeAsVectorFormat(input_layer, input_path, "utf-8", input_layer.crs(), "GPKG")
-
-        # 出力先（Rが書き出す）
-        output_path = os.path.join(tempfile.gettempdir(), "output_neighbors.gpkg")
-        output_poly_path = os.path.join(tempfile.gettempdir(), "nb_polygons.gpkg")
-        
+        input_path, is_temp = self.get_layer_path_or_temp(input_layer)
+        input_layer_path = input_path.replace("\\", "/")
+       
 
         # Rコードを生成
         r_code = f"""
@@ -211,54 +212,13 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # 近接構築
         {r_nb_code}
 
-        # ID & centroid
-        id_values <- polygons[[id_field]]
-        centroids <- st_centroid(polygons)
-
-        # edge list
-        edge_list <- do.call(rbind, lapply(seq_along(nb), function(i) {{
-            data.frame(from = i, to = nb[[i]])
-        }})) %>% dplyr::filter(from < to)
-
-        edge_list$from_id <- id_values[edge_list$from]
-        edge_list$to_id   <- id_values[edge_list$to]
-
-        # ライン生成 + 距離付加
-        lines <- lapply(1:nrow(edge_list), function(i) {{
-            from_geom <- centroids[edge_list$from[i], ]
-            to_geom   <- centroids[edge_list$to[i], ]
-            line <- st_linestring(rbind(st_coordinates(from_geom), st_coordinates(to_geom)))
-            dist <- st_distance(from_geom, to_geom, by_element = TRUE)
-            list(geom = line, dist = as.numeric(dist))
-        }})
-
-        # ラインレイヤ生成
-        line_sf <- st_sf(
-            from = edge_list$from_id,
-            to = edge_list$to_id,
-            distance = sapply(lines, function(x) x$dist),
-            geometry = st_sfc(lapply(lines, function(x) x$geom)),
-            crs = st_crs(polygons)
-        )
-        st_write(line_sf, "{output_path}", delete_dsn = TRUE)
-
-
-        # ポリゴンに近接行列を付与
-        neighbor_ids <- sapply(nb, function(neigh) paste(id_values[neigh], collapse = ","))
-        neighbor_count <- sapply(nb, length)
-
-        polygons$neighbor_ids <- neighbor_ids
-        polygons$neighbor_count <- neighbor_count
-
-        # ポリゴンとして保存
-        st_write(polygons, "{output_poly_path}", delete_dsn = TRUE)
-
 
         # nb2listw に zero.policy=TRUE をつけた場合、listw$neighbours の長さは nb に合わせて出る
         # その代わり、重み・隣接が 0 のポリゴンも明示的に扱う必要あり
         # 行基準化ウェイト行列
         # 距離減衰を使うかどうか（Pythonから渡されたフラグ）
         if ({r_use_decay}) {{
+            centroids <- st_centroid(polygons)
             glist <- nbdists(nb,centroids)
             glist <- lapply(glist,function(x) 1/x)
             # 重み付き listw 作成
@@ -267,33 +227,39 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
             listw <- nb2listw(nb, style = "W", zero.policy = TRUE)
         }}
 
-        # IDリスト（行と列の順番を固定）
-        all_ids <- id_values
+        statistic_type <- "{r_statistic_type}"  # Pythonから渡す文字列
 
-        # 初期化：全ゼロ行列
-        weight_mat <- matrix(0, nrow = length(all_ids), ncol = length(all_ids))
-        rownames(weight_mat) <- all_ids
-        colnames(weight_mat) <- all_ids
+        result_txt <- c(
+        "Input layer: {input_layer_path}\\n",
+        "Field: {field_name}",
+        "Neighbor type: Adjacency matrix  ({nb_type})"
+        )
 
-        # ウェイト代入
-        for (i in seq_along(listw$neighbours)) {{
-        from_id <- id_values[i]
-        neigh_ids <- listw$neighbours[[i]]
-        weights <- listw$weights[[i]]
-        
-        if (length(neigh_ids) > 0) {{
-            to_ids <- id_values[neigh_ids]
-            weight_mat[as.character(from_id), as.character(to_ids)] <- weights
-        }}
-        }}
-        cat("---- nb summary ----\n")
-        print(summary(nb))
-        cat("---- end of summary ----\n")
 
-        # 書き出し（CSV形式）
-        if ("{output_weights_path}" != "") {{
-            write.csv(weight_mat, file = "{output_weights_path}", row.names = TRUE)
+        if (statistic_type == "Moran's I") {{
+            test <- moran.test(polygons[[id_field]], listw)
+            test_result<- capture.output(test)
+        }} else if (statistic_type == "Geary's C") {{
+            test <- geary.test(polygons[[id_field]], listw)
+            test_result <- capture.output(test)
+        }} else if (statistic_type == "Getis-Ord G") {{
+            test <- globalG.test(polygons[[id_field]], listw)
+            test_result <- capture.output(test)
+        }} else if (statistic_type == "Getis-Ord G*") {{
+            test <- globalG.test(polygons[[id_field]], listw, star=TRUE)
+            test_result <- capture.output(test)
         }}
+
+        # 結果を出力
+        # ヘッダーに結果を追加
+        result_txt <- c(result_txt, "", test_result)
+
+        cat(result_txt, sep="\n")
+
+        # 書き出し
+        if ("{output}" != "") {{
+            writeLines(result_txt, "{output}")
+            }}
         """
                 
                 
@@ -304,63 +270,17 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
         # Rスクリプトを実行
         result = subprocess.run([rscript_path, r_script_file], capture_output=True, text=True)
-        if result.returncode != 0:
-            raise QgsProcessingException(f"R実行中にエラー:\n{result.stderr}")
+        if result.returncode != 0 or 'Error' in result.stderr:
+            raise QgsProcessingException(f"R実行中にエラー:\n{result.stderr}\n{result.stdout}")
 
-        feedback.pushInfo("Rの出力:\n" + result.stdout)
+        feedback.pushInfo("=== GISA Statistics Result ===\n" + result.stdout)
+        feedback.pushInfo("=============================")
 
-        # Rが出力したラインレイヤをQGISで読み込む
-        output_layer = QgsVectorLayer(output_path, "NeighborLines", "ogr")
-        if not output_layer.isValid():
-            feedback.reportError("出力されたラインレイヤが無効です")
-        else:
-            sink, dest_id = self.parameterAsSink(
-                parameters,
-                self.OUTPUT_NODE,
-                context,
-                output_layer.fields(),
-                output_layer.wkbType(),
-                output_layer.crs()
-            )
-
-            if sink:
-                for feat in output_layer.getFeatures():
-                    sink.addFeature(feat, QgsFeatureSink.FastInsert)
-            else:
-                feedback.pushInfo("ラインレイヤの出力はスキップされました。")
-
-            
+        os.remove(r_script_file)
+        if is_temp and os.path.exists(input_path):
+            os.remove(input_path)
         
-        # ポリゴンレイヤをQGISで読み込む
-        poly_layer = QgsVectorLayer(output_poly_path, "PolygonNeighbors", "ogr")
-        if poly_layer.isValid():
-            sink_poly, poly_id = self.parameterAsSink(
-                parameters,
-                self.OUTPUT_POLYGONS,
-                context,
-                poly_layer.fields(),
-                poly_layer.wkbType(),
-                poly_layer.crs()
-            )
-
-            if sink_poly:
-                for feat in poly_layer.getFeatures():
-                    sink_poly.addFeature(feat, QgsFeatureSink.FastInsert)
-            else:
-                feedback.pushInfo("出力ポリゴンはスキップされました。")
-        else:
-            feedback.reportError("出力ポリゴンレイヤの読み込みに失敗しました。")
-
-        feedback.pushInfo(result.stdout)
-
-
-
-        result_dict = {}
-        if 'dest_id' in locals():
-            result_dict[self.OUTPUT_NODE] = dest_id
-        if 'poly_id' in locals():
-            result_dict[self.OUTPUT_POLYGONS] = poly_id
-        return result_dict
+        return {}
 
     def name(self):
         """
@@ -370,7 +290,7 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'adjacencymatrix'
+        return 'gisaadjacencymatrix'
     
     def icon(self):
         return QIcon(os.path.join(os.path.dirname(__file__), 'icon_adjacency_matrix.png'))
@@ -383,24 +303,13 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         return self.tr('Adjacency matrix')
 
     def group(self):
-        """
-        Returns the name of the group this algorithm belongs to. This string
-        should be localised.
-        """
-        return self.tr('Adjacency Matrix')
+        return self.tr('Global Indicator of Spatial Association')
 
     def groupId(self):
-        """
-        Returns the unique ID of the group this algorithm belongs to. This
-        string should be fixed for the algorithm, and must not be localised.
-        The group id should be unique within each provider. Group id should
-        contain lowercase alphanumeric characters only and no spaces or other
-        formatting characters.
-        """
-        return 'radjacencymatrix'
+        return 'rgisa'
 
     def tr(self, string):
         return QCoreApplication.translate('Processing', string)
 
     def createInstance(self):
-        return AdjacencyMatrixAlgorithm()
+        return GISAAdjacencyMatrixAlgorithm()

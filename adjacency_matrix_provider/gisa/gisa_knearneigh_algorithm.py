@@ -2,21 +2,13 @@
 
 """
 /***************************************************************************
-R SpatialStatistics
+ R SpatialStatistics
                               -------------------
         begin                : 2025-04-13
         copyright            : (C) 2025 by nbayashi
         email                : naoya_nstyle@hotmail.co.jp
  ***************************************************************************/
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
 """
 
 __author__ = 'nbayashi'
@@ -41,7 +33,7 @@ from qgis.core import (QgsSettings,
                        QgsProcessingAlgorithm,
                        QgsProcessingParameterVectorLayer,
                        QgsProcessingParameterField,
-                       QgsProcessingParameterEnum,
+                       QgsProcessingParameterNumber,
                        QgsProcessingParameterBoolean,
                        QgsProcessingParameterFeatureSink,
                        QgsProcessingParameterFileDestination)
@@ -49,32 +41,16 @@ from qgis.core import (QgsSettings,
 
 from qgis.PyQt.QtGui import QIcon
 
-class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
-    """
-    This is an example algorithm that takes a vector layer and
-    creates a new identical one.
+class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
 
-    It is meant to be used as an example of how to create your own
-    algorithms and explain methods and variables used to do it. An
-    algorithm like this will be available in all elements, and there
-    is not need for additional work.
-
-    All Processing algorithms should extend the QgsProcessingAlgorithm
-    class.
-    """
-
-    # Constants used to refer to parameters and outputs. They will be
-    # used when calling the algorithm from another algorithm, or when
-    # calling from the QGIS console.
-
-    FIELD = 'FIELD'
     INPUT = 'INPUT'
-    NEIGHBOR_TYPE = 'NEIGHBOR_TYPE'
+    FIELD = 'FIELD'
+    K_NUM = 'K'
+    REMOVE_DUPLICATE_LINES = 'REMOVE_DUPLICATE_LINES'
     USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
     OUTPUT_NODE = 'OUTPUT_NODE'
     OUTPUT_POLYGONS = 'OUTPUT_POLYGONS'
     OUTPUT_WEIGHTS_CSV = 'OUTPUT_WEIGHTS_CSV'
-
 
 
     def initAlgorithm(self, config):
@@ -102,17 +78,28 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
                         optional=False
                     )
                 )
+        
 
-        # select queen or rook
+
+
+        # knearneigh → 近接数設定
         self.addParameter(
-            QgsProcessingParameterEnum(
-                name='NEIGHBOR_TYPE',
-                description='Queen or Rook',
-                options=['Queen', 'Rook'],
-                defaultValue=0
-            )
+            QgsProcessingParameterNumber(
+                self.K_NUM,
+                'Number of nearest neighbors (for knearneigh)',
+                defaultValue=4,
+                minValue=1
+                )
         )
 
+        # 重複行の削除
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                name=self.REMOVE_DUPLICATE_LINES,
+                description='Remove duplicated lines (A→B and B→A)',
+                defaultValue=False
+            )
+        )
 
         self.addParameter(
             QgsProcessingParameterBoolean(
@@ -121,8 +108,6 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
                 defaultValue=False
             )
         )
-
-
         
         self.addParameter(
             QgsProcessingParameterFeatureSink(
@@ -165,19 +150,22 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
         output_weights_path = self.parameterAsFile(parameters, self.OUTPUT_WEIGHTS_CSV, context)
 
-        
 
-        queen = self.parameterAsEnum(parameters, 'NEIGHBOR_TYPE', context) == 0  # True if Queen
-        nb_queen = str(queen).upper()  # R側に渡す用
+
+        k = self.parameterAsInt(parameters, self.K_NUM, context)
+        remove_duplicates = self.parameterAsBool(parameters, self.REMOVE_DUPLICATE_LINES, context)
+        r_remove_flag = "TRUE" if remove_duplicates else "FALSE"
 
         use_distance_decay = self.parameterAsBool(parameters, 'USE_DISTANCE_DECAY', context)
         r_use_decay = "TRUE" if use_distance_decay else "FALSE"
 
-
         # 共通: 座標（重心）
         r_nb_code = "coords <- st_coordinates(st_centroid(polygons))\n"
-        r_nb_code += f'nb <- poly2nb(as(polygons, "Spatial"), queen = {nb_queen})\n'
-        
+
+        r_nb_code += f'''
+        knn <- knearneigh(coords, k = {k})
+        nb <- knn2nb(knn)
+        '''
 
 
         # 入力レイヤを一時GPKGとして保存
@@ -192,7 +180,7 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # Rコードを生成
         r_code = f"""
         # パッケージ確認＆読み込み
-        packages <- c("sf", "spdep", "dplyr", "classInt")
+        packages <- c("sf", "spdep", "dplyr")
         for (pkg in packages) {{
             if (!requireNamespace(pkg, quietly = TRUE)) {{
                 install.packages(pkg, repos = "https://cloud.r-project.org")
@@ -202,10 +190,6 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
         # 入力読み込み
         polygons <- st_read("{input_path}")
-        # 投影座標系に変換（必ず最初に実施）
-        if (grepl("longlat", st_crs(polygons)$proj4string)) {{
-            polygons <- st_transform(polygons, 3857)
-        }}
         id_field <- "{field_name}"
 
         # 近接構築
@@ -218,7 +202,14 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # edge list
         edge_list <- do.call(rbind, lapply(seq_along(nb), function(i) {{
             data.frame(from = i, to = nb[[i]])
-        }})) %>% dplyr::filter(from < to)
+        }}))
+
+        # 重複行削除
+        if ({r_remove_flag}) {{
+        edge_list <- edge_list %>%
+            mutate(pair = paste(pmin(from, to), pmax(from, to), sep = "_")) %>%
+            distinct(pair, .keep_all = TRUE)
+            }}
 
         edge_list$from_id <- id_values[edge_list$from]
         edge_list$to_id   <- id_values[edge_list$to]
@@ -257,7 +248,6 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # nb2listw に zero.policy=TRUE をつけた場合、listw$neighbours の長さは nb に合わせて出る
         # その代わり、重み・隣接が 0 のポリゴンも明示的に扱う必要あり
         # 行基準化ウェイト行列
-        # 距離減衰を使うかどうか（Pythonから渡されたフラグ）
         if ({r_use_decay}) {{
             glist <- nbdists(nb,centroids)
             glist <- lapply(glist,function(x) 1/x)
@@ -286,6 +276,7 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
             weight_mat[as.character(from_id), as.character(to_ids)] <- weights
         }}
         }}
+
         cat("---- nb summary ----\n")
         print(summary(nb))
         cat("---- end of summary ----\n")
@@ -350,10 +341,7 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
                 feedback.pushInfo("出力ポリゴンはスキップされました。")
         else:
             feedback.reportError("出力ポリゴンレイヤの読み込みに失敗しました。")
-
         feedback.pushInfo(result.stdout)
-
-
 
         result_dict = {}
         if 'dest_id' in locals():
@@ -363,44 +351,24 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         return result_dict
 
     def name(self):
-        """
-        Returns the algorithm name, used for identifying the algorithm. This
-        string should be fixed for the algorithm, and must not be localised.
-        The name should be unique within each provider. Names should contain
-        lowercase alphanumeric characters only and no spaces or other
-        formatting characters.
-        """
-        return 'adjacencymatrix'
-    
+        return 'gisaknearneigh'
+
     def icon(self):
-        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_adjacency_matrix.png'))
+        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_knearneigh.png'))
+
 
     def displayName(self):
-        """
-        Returns the translated algorithm name, which should be used for any
-        user-visible display of the algorithm name.
-        """
-        return self.tr('Adjacency matrix')
+        return self.tr('K-nearest neighbors')
 
     def group(self):
-        """
-        Returns the name of the group this algorithm belongs to. This string
-        should be localised.
-        """
-        return self.tr('Adjacency Matrix')
+        return self.tr('Global Indicator of Spatial Association')
 
     def groupId(self):
-        """
-        Returns the unique ID of the group this algorithm belongs to. This
-        string should be fixed for the algorithm, and must not be localised.
-        The group id should be unique within each provider. Group id should
-        contain lowercase alphanumeric characters only and no spaces or other
-        formatting characters.
-        """
-        return 'radjacencymatrix'
+        return 'rgisa'
+
 
     def tr(self, string):
         return QCoreApplication.translate('Processing', string)
 
     def createInstance(self):
-        return AdjacencyMatrixAlgorithm()
+        return GISAKnearneighAlgorithm()

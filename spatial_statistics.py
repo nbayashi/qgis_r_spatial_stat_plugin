@@ -50,6 +50,8 @@ class RRunnerPlugin:
         self.provider = AdjacencyMatrixProvider()
         QgsApplication.processingRegistry().addProvider(self.provider)
 
+        
+
     def unload(self):
         self.iface.removePluginMenu("R Spatial Statistics", self.action)
         QgsApplication.processingRegistry().removeProvider(self.provider)

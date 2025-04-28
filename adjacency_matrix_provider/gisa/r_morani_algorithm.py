@@ -42,6 +42,7 @@ from qgis.core import (QgsSettings,
                        QgsProcessingParameterVectorLayer,
                        QgsProcessingParameterField,
                        QgsProcessingParameterEnum,
+                       QgsProcessingParameterNumber,
                        QgsProcessingParameterBoolean,
                        QgsProcessingParameterFeatureSink,
                        QgsProcessingParameterFileDestination)
@@ -49,7 +50,7 @@ from qgis.core import (QgsSettings,
 
 from qgis.PyQt.QtGui import QIcon
 
-class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
+class MoranIAlgorithm(QgsProcessingAlgorithm):
     """
     This is an example algorithm that takes a vector layer and
     creates a new identical one.
@@ -69,11 +70,19 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
     FIELD = 'FIELD'
     INPUT = 'INPUT'
+    STATISTICS_TYPE = 'STATISTICS_TYPE'
+    NB_METHOD_TYPE = 'NB_METHOD_TYPE'
     NEIGHBOR_TYPE = 'NEIGHBOR_TYPE'
+    D_MIN = 'D_MIN'
+    D_MAX = 'D_MAX'
+    K_NUM = 'K'
+
+
+
     USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
-    OUTPUT_NODE = 'OUTPUT_NODE'
-    OUTPUT_POLYGONS = 'OUTPUT_POLYGONS'
-    OUTPUT_WEIGHTS_CSV = 'OUTPUT_WEIGHTS_CSV'
+
+
+    OUTPUT = 'OUTPUT'
 
 
 
@@ -102,6 +111,25 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
                         optional=False
                     )
                 )
+        
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                name=self.STATISTICS_TYPE,
+                description='Statistics type',
+                options=['Global Moran\'s I', 'Global Geary\'s C','Global Getis-Ord G','Global Getis-Ord G*'],
+                defaultValue=0
+            )
+        )
+
+        # 近接行列のタイプを選ぶ
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                name=self.NB_METHOD_TYPE,
+                description='Neighborhood construction method',
+                options=['Polygon contiguity (poly2nb)', 'Distance-based (dnearneigh)', 'K-nearest neighbors (knearneigh)'],
+                defaultValue=0
+            )
+        )
 
         # select queen or rook
         self.addParameter(
@@ -113,6 +141,34 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
             )
         )
 
+        # dnearneigh → 距離設定
+        self.addParameter(
+            QgsProcessingParameterNumber(
+                name=self.D_MIN,
+                description='Minimum distance (m)',
+                defaultValue=0
+                )
+        )
+        self.addParameter(
+            QgsProcessingParameterNumber(
+                name=self.D_MAX,
+                description='Maximum distance (m)',
+                defaultValue=5000
+            )
+        )
+
+
+        # knearneigh → 近接数設定
+        self.addParameter(
+            QgsProcessingParameterNumber(
+                self.K_NUM,
+                'Number of nearest neighbors (for knearneigh)',
+                defaultValue=4,
+                minValue=1
+                )
+        )
+
+
 
         self.addParameter(
             QgsProcessingParameterBoolean(
@@ -123,30 +179,12 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         )
 
 
-        
-        self.addParameter(
-            QgsProcessingParameterFeatureSink(
-                self.OUTPUT_NODE,
-                self.tr('Output layer'),
-                optional=True,  
-                createByDefault=True 
-            )
-        )
-
-        self.addParameter(
-            QgsProcessingParameterFeatureSink(
-                name=self.OUTPUT_POLYGONS,
-                description='Polygons with neighbor attributes',
-                optional=True,  
-                createByDefault=True 
-            )
-        )
-        # CSV path
+        # html
         self.addParameter(
             QgsProcessingParameterFileDestination(
-                name=self.OUTPUT_WEIGHTS_CSV,
-                description='Row-standardized weights matrix (CSV)',
-                fileFilter='CSV files (*.csv)',
+                name=self.OUTPUT,
+                description='Export result html',
+                fileFilter='HTML (*.html)',
                 optional=True,  # ← スキップ可
                 createByDefault=False # ← デフォルトで作成しない
             )
@@ -163,12 +201,21 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # フィールド名を取得
         field_name = self.parameterAsString(parameters, self.FIELD, context)
 
-        output_weights_path = self.parameterAsFile(parameters, self.OUTPUT_WEIGHTS_CSV, context)
-
         
 
         queen = self.parameterAsEnum(parameters, 'NEIGHBOR_TYPE', context) == 0  # True if Queen
         nb_queen = str(queen).upper()  # R側に渡す用
+
+
+
+        d_minimum = self.parameterAsDouble(parameters, self.D_MIN, context)
+        d_maximum = self.parameterAsDouble(parameters, self.D_MAX, context)
+        k_number = self.parameterAsInt(parameters, self.K_NUM, context)
+        
+        output = self.parameterAsFile(parameters, self.OUTPUT, context)
+
+        
+
 
         use_distance_decay = self.parameterAsBool(parameters, 'USE_DISTANCE_DECAY', context)
         r_use_decay = "TRUE" if use_distance_decay else "FALSE"
@@ -177,17 +224,29 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # 共通: 座標（重心）
         r_nb_code = "coords <- st_coordinates(st_centroid(polygons))\n"
         r_nb_code += f'nb <- poly2nb(as(polygons, "Spatial"), queen = {nb_queen})\n'
+
+        r_statistic__index = self.parameterAsEnum(parameters, self.STATISTICS_TYPE, context)
+        r_statistic_type = ['Moran\'s I', 'Geary\'s C', 'Getis-Ord G', 'Getis-Ord G*'][r_statistic__index]
         
+        nb_method_index = self.parameterAsEnum(parameters, self.NB_METHOD_TYPE, context)
+        nb_method = ['poly2nb', 'dnearneigh', 'knearneigh'][nb_method_index]
+
+        if nb_method == 'poly2nb':
+            r_nb_code = f'nb <- poly2nb(as(polygons, "Spatial"), queen = {nb_queen})\n'
+        elif nb_method == 'dnearneigh':
+            r_nb_code = "coords <- st_coordinates(st_centroid(polygons))\n"
+            r_nb_code += f'nb <- dnearneigh(coords, d1 = {d_minimum}, d2 = {d_maximum})\n'
+        elif nb_method == 'knearneigh':
+            r_nb_code = "coords <- st_coordinates(st_centroid(polygons))\n"
+            r_nb_code += f'knn <- knearneigh(coords, k = {k_number})\n'
+            r_nb_code += 'nb <- knn2nb(knn)\n'
+
 
 
         # 入力レイヤを一時GPKGとして保存
         input_path = os.path.join(tempfile.gettempdir(), "input_polygons.gpkg")
         QgsVectorFileWriter.writeAsVectorFormat(input_layer, input_path, "utf-8", input_layer.crs(), "GPKG")
 
-        # 出力先（Rが書き出す）
-        output_path = os.path.join(tempfile.gettempdir(), "output_neighbors.gpkg")
-        output_poly_path = os.path.join(tempfile.gettempdir(), "nb_polygons.gpkg")
-        
 
         # Rコードを生成
         r_code = f"""
@@ -211,49 +270,6 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # 近接構築
         {r_nb_code}
 
-        # ID & centroid
-        id_values <- polygons[[id_field]]
-        centroids <- st_centroid(polygons)
-
-        # edge list
-        edge_list <- do.call(rbind, lapply(seq_along(nb), function(i) {{
-            data.frame(from = i, to = nb[[i]])
-        }})) %>% dplyr::filter(from < to)
-
-        edge_list$from_id <- id_values[edge_list$from]
-        edge_list$to_id   <- id_values[edge_list$to]
-
-        # ライン生成 + 距離付加
-        lines <- lapply(1:nrow(edge_list), function(i) {{
-            from_geom <- centroids[edge_list$from[i], ]
-            to_geom   <- centroids[edge_list$to[i], ]
-            line <- st_linestring(rbind(st_coordinates(from_geom), st_coordinates(to_geom)))
-            dist <- st_distance(from_geom, to_geom, by_element = TRUE)
-            list(geom = line, dist = as.numeric(dist))
-        }})
-
-        # ラインレイヤ生成
-        line_sf <- st_sf(
-            from = edge_list$from_id,
-            to = edge_list$to_id,
-            distance = sapply(lines, function(x) x$dist),
-            geometry = st_sfc(lapply(lines, function(x) x$geom)),
-            crs = st_crs(polygons)
-        )
-        st_write(line_sf, "{output_path}", delete_dsn = TRUE)
-
-
-        # ポリゴンに近接行列を付与
-        neighbor_ids <- sapply(nb, function(neigh) paste(id_values[neigh], collapse = ","))
-        neighbor_count <- sapply(nb, length)
-
-        polygons$neighbor_ids <- neighbor_ids
-        polygons$neighbor_count <- neighbor_count
-
-        # ポリゴンとして保存
-        st_write(polygons, "{output_poly_path}", delete_dsn = TRUE)
-
-
         # nb2listw に zero.policy=TRUE をつけた場合、listw$neighbours の長さは nb に合わせて出る
         # その代わり、重み・隣接が 0 のポリゴンも明示的に扱う必要あり
         # 行基準化ウェイト行列
@@ -267,25 +283,23 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
             listw <- nb2listw(nb, style = "W", zero.policy = TRUE)
         }}
 
-        # IDリスト（行と列の順番を固定）
-        all_ids <- id_values
+        statistic_type <- "{r_statistic_type}"  # Pythonから渡す文字列
+        result_html <- ""
 
-        # 初期化：全ゼロ行列
-        weight_mat <- matrix(0, nrow = length(all_ids), ncol = length(all_ids))
-        rownames(weight_mat) <- all_ids
-        colnames(weight_mat) <- all_ids
-
-        # ウェイト代入
-        for (i in seq_along(listw$neighbours)) {{
-        from_id <- id_values[i]
-        neigh_ids <- listw$neighbours[[i]]
-        weights <- listw$weights[[i]]
+        if (statistic_type == "Moran's I") {{
+            test <- moran.test(polygons[[id_field]], listw)
+            result_html <- capture.output(test)
+        }} else if (statistic_type == "Geary's C") {{
+            test <- geary.test(polygons[[id_field]], listw)
+            result_html <- capture.output(test)
+        }} else if (statistic_type == "Getis-Ord G") {{
+            test <- globalG.test(polygons[[id_field]], listw)
+            result_html <- capture.output(test)
+        }} else if (statistic_type == "Getis-Ord G*") {{
+            test <- globalG.test(polygons[[id_field]], listw, star=TRUE)
+            result_html <- capture.output(test)
+        }}
         
-        if (length(neigh_ids) > 0) {{
-            to_ids <- id_values[neigh_ids]
-            weight_mat[as.character(from_id), as.character(to_ids)] <- weights
-        }}
-        }}
         cat("---- nb summary ----\n")
         print(summary(nb))
         cat("---- end of summary ----\n")
@@ -370,7 +384,7 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'adjacencymatrix'
+        return 'morani'
     
     def icon(self):
         return QIcon(os.path.join(os.path.dirname(__file__), 'icon_adjacency_matrix.png'))
@@ -380,14 +394,14 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         Returns the translated algorithm name, which should be used for any
         user-visible display of the algorithm name.
         """
-        return self.tr('Adjacency matrix')
+        return self.tr('Moran I')
 
     def group(self):
         """
         Returns the name of the group this algorithm belongs to. This string
         should be localised.
         """
-        return self.tr('Adjacency Matrix')
+        return self.tr('R GISA')
 
     def groupId(self):
         """
@@ -397,10 +411,10 @@ class AdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         contain lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'radjacencymatrix'
+        return 'rgisa'
 
     def tr(self, string):
         return QCoreApplication.translate('Processing', string)
 
     def createInstance(self):
-        return AdjacencyMatrixAlgorithm()
+        return MoranIAlgorithm()

@@ -1,0 +1,278 @@
+# -*- coding: utf-8 -*-
+
+"""
+/***************************************************************************
+ R SpatialStatistics
+                              -------------------
+        begin                : 2025-04-13
+        copyright            : (C) 2025 by nbayashi
+        email                : naoya_nstyle@hotmail.co.jp
+ ***************************************************************************/
+
+ """
+
+__author__ = 'nbayashi'
+__date__ = '2025-04-13'
+__copyright__ = '(C) 2025 by nbayashi'
+
+# This will get replaced with a git SHA1 when you do a git archive
+
+__revision__ = '$Format:%H$'
+import subprocess
+import os
+import uuid
+
+import tempfile
+
+from qgis.PyQt.QtCore import QCoreApplication
+from qgis.core import (QgsSettings,
+                       QgsProcessing,
+                       QgsProcessingException,
+                       QgsVectorFileWriter,
+                       QgsProcessingAlgorithm,
+                       QgsProcessingParameterVectorLayer,
+                       QgsProcessingParameterField,
+                       QgsProcessingParameterBoolean,
+                       QgsProcessingParameterNumber,
+                       QgsProcessingParameterFileDestination,
+                       QgsProcessingParameterEnum)
+
+from qgis.PyQt.QtGui import QIcon
+
+
+class GISADnearneighAlgorithm(QgsProcessingAlgorithm):
+
+    FIELD = 'FIELD'
+    INPUT = 'INPUT'
+    STATISTICS_TYPE = 'STATISTICS_TYPE'
+    D_MIN = 'D_MIN'
+    D_MAX = 'D_MAX'
+    USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
+    OUTPUT = 'OUTPUT_'
+
+
+
+    def initAlgorithm(self, config):
+        self.addParameter(
+            QgsProcessingParameterVectorLayer(
+                self.INPUT,
+                self.tr('Input layer'),
+                [QgsProcessing.TypeVectorAnyGeometry]
+            )
+        )
+        # 属性の設定
+        self.addParameter(
+                    QgsProcessingParameterField(
+                        self.FIELD,
+                        self.tr('Field'),
+                                        # 親レイヤのパラメータの名称を指定
+                        parentLayerParameterName= self.INPUT,
+                        optional=False
+                    )
+                )
+
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                name=self.STATISTICS_TYPE,
+                description='Statistics type',
+                options=['Global Moran\'s I', 'Global Geary\'s C','Global Getis-Ord G','Global Getis-Ord G*'],
+                defaultValue=0
+            )
+        )
+        # dnearneigh → 距離設定
+        self.addParameter(
+            QgsProcessingParameterNumber(
+                name=self.D_MIN,
+                description='Minimum distance (m)',
+                defaultValue=0
+                )
+        )
+        self.addParameter(
+            QgsProcessingParameterNumber(
+                name=self.D_MAX,
+                description='Maximum distance (m)',
+                defaultValue=5000
+            )
+        )
+
+
+
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                name=self.USE_DISTANCE_DECAY,
+                description='Use distance-decay weights (1/d)',
+                defaultValue=False
+            )
+        )
+
+        # txt
+        self.addParameter(
+            QgsProcessingParameterFileDestination(
+                name=self.OUTPUT,
+                description='Export result txt',
+                fileFilter='TXT (*.txt)',
+                optional=True,  # ← スキップ可
+                createByDefault=False # ← デフォルトで作成しない
+            )
+        )
+    def get_layer_path_or_temp(self, layer):
+        # ファイルベースなら直接返す
+        if layer.storageType().lower() in ["esri shapefile", "gpkg", "geojson", "geopackage"]:
+            return layer.source(), False
+        else:
+            # それ以外なら一時GPKGにエクスポート
+            temp_path = os.path.join(tempfile.gettempdir(), f"input_polygons_{uuid.uuid4().hex}.gpkg")
+            QgsVectorFileWriter.writeAsVectorFormat(layer, temp_path, "utf-8", layer.crs(), "GPKG")
+            return temp_path, True
+       
+    def processAlgorithm(self, parameters, context, feedback):
+        rscript_path = QgsSettings().value("RRunner/RscriptPath", "")
+        # Check if the Rscript path is set
+        if not os.path.exists(rscript_path):
+            raise QgsProcessingException("Rscriptのパスが無効です")
+        
+
+        input_layer = self.parameterAsVectorLayer(parameters, self.INPUT, context)
+        # フィールド名を取得
+        field_name = self.parameterAsString(parameters, self.FIELD, context)
+
+        output = self.parameterAsFile(parameters, self.OUTPUT, context)
+
+        
+
+        d_minimum = self.parameterAsDouble(parameters, self.D_MIN, context)
+        d_maximum = self.parameterAsDouble(parameters, self.D_MAX, context)
+
+
+        use_distance_decay = self.parameterAsBool(parameters, 'USE_DISTANCE_DECAY', context)
+        r_use_decay = "TRUE" if use_distance_decay else "FALSE"
+        
+        # 共通: 座標（重心）
+        r_nb_code = "coords <- st_coordinates(st_centroid(polygons))\n"
+        r_nb_code += f'nb <- dnearneigh(coords, d1 = {d_minimum}, d2 = {d_maximum})\n'
+                
+        r_statistic__index = self.parameterAsEnum(parameters, self.STATISTICS_TYPE, context)
+        r_statistic_type = ['Moran\'s I', 'Geary\'s C', 'Getis-Ord G', 'Getis-Ord G*'][r_statistic__index]
+        
+
+        # 入力レイヤを一時GPKGとして保存
+        input_path, is_temp = self.get_layer_path_or_temp(input_layer)
+        input_layer_path = input_path.replace("\\", "/")
+       
+
+
+        # Rコードを生成
+        r_code = f"""
+         # パッケージ確認＆読み込み
+        packages <- c("sf", "spdep", "dplyr", "classInt")
+        for (pkg in packages) {{
+            if (!requireNamespace(pkg, quietly = TRUE)) {{
+                install.packages(pkg, repos = "https://cloud.r-project.org")
+            }}
+            library(pkg, character.only = TRUE)
+        }}
+
+        # 入力読み込み
+        polygons <- st_read("{input_path}")
+        id_field <- "{field_name}"
+
+        # 地理座標系なら EPSG:3857 に変換（単位：メートル）
+        if (grepl("longlat", st_crs(polygons)$proj4string)) {{
+            message("入力データが地理座標系です。EPSG:3857 に投影変換します。")
+            polygons <- st_transform(polygons, 3857)
+        }}
+
+        # 近接構築
+        {r_nb_code}
+
+        # nb2listw に zero.policy=TRUE をつけた場合、listw$neighbours の長さは nb に合わせて出る
+        # その代わり、重み・隣接が 0 のポリゴンも明示的に扱う必要あり
+        # 行基準化ウェイト行列
+        # 距離減衰を使うかどうか（Pythonから渡されたフラグ）
+        if ({r_use_decay}) {{
+            centroids <- st_centroid(polygons)
+            glist <- nbdists(nb,centroids)
+            glist <- lapply(glist,function(x) 1/x)
+            # 重み付き listw 作成
+            listw <- nb2listw(nb, glist = glist, style = "W", zero.policy = TRUE)
+        }} else {{
+            listw <- nb2listw(nb, style = "W", zero.policy = TRUE)
+        }}
+
+        statistic_type <- "{r_statistic_type}"  # Pythonから渡す文字列
+
+        result_txt <- c(
+        "Input layer: {input_layer_path}\\n",
+        "Field: {field_name}",
+        "Neighbor type: Distance-based (min= {d_minimum}, max= {d_maximum})"
+        )
+
+
+        if (statistic_type == "Moran's I") {{
+            test <- moran.test(polygons[[id_field]], listw)
+            test_result<- capture.output(test)
+        }} else if (statistic_type == "Geary's C") {{
+            test <- geary.test(polygons[[id_field]], listw)
+            test_result <- capture.output(test)
+        }} else if (statistic_type == "Getis-Ord G") {{
+            test <- globalG.test(polygons[[id_field]], listw)
+            test_result <- capture.output(test)
+        }} else if (statistic_type == "Getis-Ord G*") {{
+            test <- globalG.test(polygons[[id_field]], listw, star=TRUE)
+            test_result <- capture.output(test)
+        }}
+
+        # 結果を出力
+        # ヘッダーに結果を追加
+        result_txt <- c(result_txt, "", test_result)
+
+        cat(result_txt, sep="\n")
+
+        # 書き出し
+        if ("{output}" != "") {{
+            writeLines(result_txt, "{output}")
+            }}
+        """
+                
+                
+                
+        # Rスクリプトを一時ファイルに保存
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".R") as f:
+            f.write(r_code.encode("utf-8"))
+            r_script_file = f.name
+
+        # Rスクリプトを実行
+        result = subprocess.run([rscript_path, r_script_file], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise QgsProcessingException(f"R実行中にエラー:\n{result.stderr}")
+
+        feedback.pushInfo("=== GISA Statistics Result ===\n" + result.stdout)
+        feedback.pushInfo("=============================")
+
+        os.remove(r_script_file)
+        if is_temp and os.path.exists(input_path):
+            os.remove(input_path)
+        
+        return {}
+
+    def name(self):
+        return 'gisadnearneigh'
+    
+    def icon(self):
+        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_dnearneigh.png'))
+
+
+    def displayName(self):
+        return self.tr('Distance-based Nearest Neighbor')
+
+    def group(self):
+        return self.tr('Global Indicator of Spatial Association')
+
+    def groupId(self):
+        return 'rgisa'
+
+    def tr(self, string):
+        return QCoreApplication.translate('Processing', string)
+
+    def createInstance(self):
+        return GISADnearneighAlgorithm()

@@ -361,7 +361,7 @@ class KnearneighAlgorithm(QgsProcessingAlgorithm):
         return self.tr('K-nearest neighbors')
 
     def group(self):
-        return self.tr('R Adjacency Matrix')
+        return self.tr('Adjacency Matrix')
 
     def groupId(self):
         return 'radjacencymatrix'
