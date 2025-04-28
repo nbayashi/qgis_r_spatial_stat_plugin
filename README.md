@@ -30,7 +30,7 @@ QGIS メニューから：[設定] → [オプション] → [R Runner] タブ �
 
 ---
 
-## プロセッシングツールの説明
+## 近接行列
 
 以下のツールはすべて QGIS の「プロセシングツールボックス」から利用できます。
 
@@ -69,13 +69,26 @@ QGIS メニューから：[設定] → [オプション] → [R Runner] タブ �
 
 ---
 
-## 出力されるファイル
+### 出力されるファイル
 
 - `neighbor_lines`: 中心点間を結ぶラインレイヤ（可視化用）
 - `neighbor_polygons`: 近接属性を付加したポリゴンレイヤ
 - `weights.csv`: 行基準化された空間重み行列
 
 ---
+## Global Indicators of Spatial Association (GISA)
+
+- 入力レイヤと指定した属性をもとに、グローバル空間自己相関統計量を計算します。
+![img_gisa](image/README/img_gisa.png)
+- 対応する指標：
+  - Global Moran’s I
+  - Global Geary’s C
+  - Global Getis-Ord G
+  - Global Getis-Ord G*
+- クイーン型、ルーク型、距離ベース、k近傍それぞれの近接方法に応じた統計量を計算可能です。
+- 結果はプロセッシング結果パネルに表示され、必要に応じてテキストファイルとしてエクスポートも可能です。
+---
+
 
 ## 必要なRパッケージ
 
@@ -126,7 +139,7 @@ Example (Windows):C:\Program Files\R\R-4.3.1\bin\Rscript.exe
 
 ---
 
-## Description of Processing Tools
+## Adjacency Matrix Tools
 
 All tools are available via the QGIS **Processing Toolbox**.
 
@@ -162,11 +175,25 @@ Distance-decay weights can be enabled optionally.
 
 ---
 
-## Output Files
+### Output Files
 
 - `neighbor_lines.gpkg`: Line layer showing centroid connections
 - `neighbor_polygons.gpkg`: Polygons with neighbor ID and count attributes
 - `weights.csv`: Row-standardized spatial weight matrix
+
+---
+
+## Global Indicators of Spatial Association (GISA)
+
+- Calculates global spatial autocorrelation statistics for a given attribute field of the input layer.
+![img_gisa](image/README/img_gisa.png)
+- Supported statistics:
+  - Global Moran’s I
+  - Global Geary’s C
+  - Global Getis-Ord G
+  - Global Getis-Ord G*
+- The computation adapts to the selected neighbor method (Queen, Rook, Distance-based, K-nearest).
+- Results are displayed in the Processing log and optionally exported as a .txt file.
 
 ---
 
