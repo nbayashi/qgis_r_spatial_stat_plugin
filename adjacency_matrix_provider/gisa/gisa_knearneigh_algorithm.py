@@ -197,17 +197,31 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
         # その代わり、重み・隣接が 0 のポリゴンも明示的に扱う必要あり
         # 行基準化ウェイト行列
         # 距離減衰を使うかどうか（Pythonから渡されたフラグ）
+        statistic_type <- "{r_statistic_type}"  # Pythonから渡す文字列
+
+        # 距離減衰ありの場合
         if ({r_use_decay}) {{
             centroids <- st_centroid(polygons)
-            glist <- nbdists(nb,centroids)
-            glist <- lapply(glist,function(x) 1/x)
-            # 重み付き listw 作成
-            listw <- nb2listw(nb, glist = glist, style = "W", zero.policy = TRUE)
-        }} else {{
-            listw <- nb2listw(nb, style = "W", zero.policy = TRUE)
-        }}
+            glist <- nbdists(nb, centroids)
+            glist <- lapply(glist, function(x) 1/x)
 
-        statistic_type <- "{r_statistic_type}"  # Pythonから渡す文字列
+            if (statistic_type == "Getis-Ord G*") {{
+                nb_self <- include.self(nb)
+                listw <- nb2listw(nb_self, glist=glist, style="W", zero.policy=TRUE)
+            }} else {{
+                listw <- nb2listw(nb, glist=glist, style="W", zero.policy=TRUE)
+            }}
+        }} else {{
+            # 距離減衰なしの場合
+            if (statistic_type == "Getis-Ord G") {{
+                listw <- nb2listw(nb, style="B", zero.policy=TRUE)
+            }} else if (statistic_type == "Getis-Ord G*") {{
+                nb_self <- include.self(nb)
+                listw <- nb2listw(nb_self, style="B", zero.policy=TRUE)
+            }} else {{
+                listw <- nb2listw(nb, style="W", zero.policy=TRUE)
+            }}
+        }}
 
         result_txt <- c(
         "Input layer: {input_layer_path}\\n",
@@ -222,13 +236,10 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
         }} else if (statistic_type == "Geary's C") {{
             test <- geary.test(polygons[[id_field]], listw)
             test_result <- capture.output(test)
-        }} else if (statistic_type == "Getis-Ord G") {{
+        }} else if (statistic_type == "Getis-Ord G" || statistic_type == "Getis-Ord G*") {{
             test <- globalG.test(polygons[[id_field]], listw)
             test_result <- capture.output(test)
-        }} else if (statistic_type == "Getis-Ord G*") {{
-            test <- globalG.test(polygons[[id_field]], listw, star=TRUE)
-            test_result <- capture.output(test)
-        }}
+        }} 
 
         # 結果を出力
         # ヘッダーに結果を追加
