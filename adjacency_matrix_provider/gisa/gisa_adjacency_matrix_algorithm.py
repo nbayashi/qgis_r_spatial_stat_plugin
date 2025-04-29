@@ -46,7 +46,7 @@ class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
     STATISTICS_TYPE = 'STATISTICS_TYPE'
     NEIGHBOR_TYPE = 'NEIGHBOR_TYPE'
     USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
-    OUTPUT = 'OUTPUT_'
+    OUTPUT = 'OUTPUT'
 
 
 

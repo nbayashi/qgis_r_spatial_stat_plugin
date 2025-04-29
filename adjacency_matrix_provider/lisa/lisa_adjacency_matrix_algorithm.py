@@ -49,7 +49,7 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
     STATISTICS_TYPE = 'STATISTICS_TYPE'
     NEIGHBOR_TYPE = 'NEIGHBOR_TYPE'
     OUTPUT_POLYGONS = 'OUTPUT_POLYGONS'
-    OUTPUT = 'OUTPUT_'
+    OUTPUT = 'OUTPUT'
 
 
 

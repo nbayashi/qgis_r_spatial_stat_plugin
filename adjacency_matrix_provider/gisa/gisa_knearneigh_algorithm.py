@@ -46,7 +46,7 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
     K_NUM = 'K'
     STATISTICS_TYPE = 'STATISTICS_TYPE'
     USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
-    OUTPUT = 'OUTPUT_'
+    OUTPUT = 'OUTPUT'
 
 
     def initAlgorithm(self, config):

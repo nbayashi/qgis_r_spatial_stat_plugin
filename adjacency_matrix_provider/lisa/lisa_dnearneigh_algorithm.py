@@ -49,7 +49,7 @@ class GISADnearneighAlgorithm(QgsProcessingAlgorithm):
     D_MIN = 'D_MIN'
     D_MAX = 'D_MAX'
     USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
-    OUTPUT = 'OUTPUT_'
+    OUTPUT = 'OUTPUT'
 
 
 
