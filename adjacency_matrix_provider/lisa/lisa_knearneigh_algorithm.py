@@ -8,14 +8,12 @@
         copyright            : (C) 2025 by nbayashi
         email                : naoya_nstyle@hotmail.co.jp
  ***************************************************************************/
-
 """
 
 __author__ = 'nbayashi'
 __date__ = '2025-04-13'
 __copyright__ = '(C) 2025 by nbayashi'
 
-# This will get replaced with a git SHA1 when you do a git archive
 
 __revision__ = '$Format:%H$'
 import subprocess
@@ -28,27 +26,27 @@ from qgis.PyQt.QtCore import QCoreApplication
 from qgis.core import (QgsSettings,
                        QgsProcessing,
                        QgsProcessingException,
-                       QgsVectorFileWriter,
+                       QgsVectorLayer,
+                       QgsWkbTypes,
+                       QgsFeatureSink,
                        QgsProcessingAlgorithm,
                        QgsProcessingParameterVectorLayer,
                        QgsProcessingParameterField,
                        QgsProcessingParameterNumber,
-                       QgsProcessingParameterBoolean,
-                       QgsProcessingParameterFileDestination,
+                       QgsProcessingParameterFeatureSink,
                        QgsProcessingParameterEnum)
 
 
 from qgis.PyQt.QtGui import QIcon
 from ...utils.layer_tools import get_layer_path_or_temp
 
-class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
+class LISAKnearneighAlgorithm(QgsProcessingAlgorithm):
 
     INPUT = 'INPUT'
     FIELD = 'FIELD'
     K_NUM = 'K'
     STATISTICS_TYPE = 'STATISTICS_TYPE'
-    USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
-    OUTPUT = 'OUTPUT'
+    OUTPUT_POLYGONS = 'OUTPUT_POLYGONS'
 
 
     def initAlgorithm(self, config):
@@ -82,7 +80,7 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterEnum(
                 name=self.STATISTICS_TYPE,
                 description='Statistics type',
-                options=['Global Moran\'s I', 'Global Geary\'s C','Global Getis-Ord G','Global Getis-Ord G*'],
+                options=['Local Moran\'s I','Local Getis-Ord G','Local Getis-Ord G*'],
                 defaultValue=0
             )
         )
@@ -100,35 +98,13 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
 
 
         self.addParameter(
-            QgsProcessingParameterBoolean(
-                name=self.USE_DISTANCE_DECAY,
-                description='Use distance-decay weights (1/d)',
-                defaultValue=False
-            )
-        )
-        
-        # txt
-        self.addParameter(
-            QgsProcessingParameterFileDestination(
-                name=self.OUTPUT,
-                description='Export result txt',
-                fileFilter='TXT (*.txt)',
-                optional=True,  # ← スキップ可
-                createByDefault=False # ← デフォルトで作成しない
+            QgsProcessingParameterFeatureSink(
+                name=self.OUTPUT_POLYGONS,
+                description='Polygons with neighbor attributes',
+                createByDefault=True 
             )
         )
 
-
-    def get_layer_path_or_temp(self, layer):
-        # ファイルベースなら直接返す
-        if layer.storageType().lower() in ["esri shapefile", "gpkg", "geojson", "geopackage"]:
-            return layer.source(), False
-        else:
-            # それ以外なら一時GPKGにエクスポート
-            temp_path = os.path.join(tempfile.gettempdir(), f"input_polygons_{uuid.uuid4().hex}.gpkg")
-            QgsVectorFileWriter.writeAsVectorFormat(layer, temp_path, "utf-8", layer.crs(), "GPKG")
-            return temp_path, True
-       
        
 
     def processAlgorithm(self, parameters, context, feedback):
@@ -142,15 +118,10 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
         # フィールド名を取得
         field_name = self.parameterAsString(parameters, self.FIELD, context)
 
-        output = self.parameterAsFile(parameters, self.OUTPUT, context)
-
 
 
         k = self.parameterAsInt(parameters, self.K_NUM, context)
         
-        use_distance_decay = self.parameterAsBool(parameters, 'USE_DISTANCE_DECAY', context)
-        r_use_decay = "TRUE" if use_distance_decay else "FALSE"
-
         # 共通: 座標（重心）
         r_nb_code = "coords <- st_coordinates(st_centroid(polygons))\n"
         r_nb_code += f'''
@@ -159,14 +130,15 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
         '''
 
         r_statistic__index = self.parameterAsEnum(parameters, self.STATISTICS_TYPE, context)
-        r_statistic_type = ['Moran\'s I', 'Geary\'s C', 'Getis-Ord G', 'Getis-Ord G*'][r_statistic__index]
+        r_statistic_type = ['Local Moran\'s I', 'Local Getis-Ord G', 'Local Getis-Ord G*'][r_statistic__index]
         
-
 
         # 入力レイヤを一時GPKGとして保存
         input_path, is_temp = get_layer_path_or_temp(input_layer)
-        input_layer_path = input_path.replace("\\", "/")
        
+        # 出力先（Rが書き出す）
+        output_poly_path = os.path.join(tempfile.gettempdir(), f"output_neighbors_{uuid.uuid4().hex}.gpkg")
+        
 
         # Rコードを生成
         r_code = f"""
@@ -193,64 +165,69 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
         {r_nb_code}
 
 
-        # nb2listw に zero.policy=TRUE をつけた場合、listw$neighbours の長さは nb に合わせて出る
-        # その代わり、重み・隣接が 0 のポリゴンも明示的に扱う必要あり
-        # 行基準化ウェイト行列
-        # 距離減衰を使うかどうか（Pythonから渡されたフラグ）
+        # 隣接行列の作成
         statistic_type <- "{r_statistic_type}"  # Pythonから渡す文字列
-
-        # 距離減衰ありの場合
-        if ({r_use_decay}) {{
-            centroids <- st_centroid(polygons)
-            glist <- nbdists(nb, centroids)
-            glist <- lapply(glist, function(x) 1/x)
-
-            if (statistic_type == "Getis-Ord G*") {{
-                nb_self <- include.self(nb)
-                listw <- nb2listw(nb_self, glist=glist, style="W", zero.policy=TRUE)
-            }} else {{
-                listw <- nb2listw(nb, glist=glist, style="W", zero.policy=TRUE)
-            }}
+        if (statistic_type == "Local Getis-Ord G") {{
+            listw <- nb2listw(nb, style="B", zero.policy=TRUE)
+        }} else if (statistic_type == "Local Getis-Ord G*") {{
+            nb_self <- include.self(nb)
+            listw <- nb2listw(nb_self, style="B", zero.policy=TRUE)
         }} else {{
-            # 距離減衰なしの場合
-            if (statistic_type == "Getis-Ord G") {{
-                listw <- nb2listw(nb, style="B", zero.policy=TRUE)
-            }} else if (statistic_type == "Getis-Ord G*") {{
-                nb_self <- include.self(nb)
-                listw <- nb2listw(nb_self, style="B", zero.policy=TRUE)
-            }} else {{
-                listw <- nb2listw(nb, style="W", zero.policy=TRUE)
-            }}
+            listw <- nb2listw(nb, style="W", zero.policy=TRUE)
         }}
 
-        result_txt <- c(
-        "Input layer: {input_layer_path}\\n",
-        "Field: {field_name}",
-        "Neighbor type: k-nearest neighbors (k= {k})"
-        )
 
+        if (statistic_type == "Local Moran's I") {{
+            test <- localmoran(polygons[[id_field]], listw, zero.policy = TRUE)
+            test_result <- capture.output(test)
+            quadr <- attr(test, "quadr")
 
-        if (statistic_type == "Moran's I") {{
-            test <- moran.test(polygons[[id_field]], listw)
-            test_result<- capture.output(test)
-        }} else if (statistic_type == "Geary's C") {{
-            test <- geary.test(polygons[[id_field]], listw)
-            test_result <- capture.output(test)
-        }} else if (statistic_type == "Getis-Ord G" || statistic_type == "Getis-Ord G*") {{
-            test <- globalG.test(polygons[[id_field]], listw)
-            test_result <- capture.output(test)
+            # 結果を属性に追加
+            attrs <- st_drop_geometry(polygons)
+            attrs$Ii <- test[, "Ii"]
+            attrs$E <- test[, "E.Ii"]
+            attrs$Var <- test[, "Var.Ii"]
+            attrs$Z <- test[, "Z.Ii"]
+            attrs$Pr_z <- test[, "Pr(z != E(Ii))"]
+            attrs$clus_mean <- quadr[,"mean"]
+            attrs$clus_median <- quadr[,"median"]
+            attrs$clus_pysal <- quadr[,"pysal"]
+
+            # geometryと再結合
+            polygons <- st_sf(attrs, geometry = st_geometry(polygons))
+        }} else if (statistic_type == "Local Getis-Ord G") {{
+            test <- localG(polygons[[id_field]], listw, zero.policy = TRUE)
+            #test_result <- capture.output(test)
+            internals <- attr(test, "internals")
+            # 結果を属性に追加
+            attrs <- st_drop_geometry(polygons)
+            attrs$Gi <-  as.numeric(test)
+            attrs$Pr_z <- internals[, "Pr(z != E(Gi))"]
+
+            # geometryと再結合
+            polygons <- st_sf(attrs, geometry = st_geometry(polygons))
+        }} else if (statistic_type == "Local Getis-Ord G*") {{
+            test <- localG(polygons[[id_field]], listw, zero.policy = TRUE)
+            #test_result <- capture.output(test)
+            internals <- attr(test, "internals")
+            cluster <- attr(test,"cluster")
+            # 結果を属性に追加
+            attrs <- st_drop_geometry(polygons)
+            attrs$Gi <-  as.numeric(test)
+            attrs$Pr_z <- internals[, "Pr(z != E(G*i))"]
+            attrs$cluster <- cluster
+
+            # geometryと再結合
+            polygons <- st_sf(attrs, geometry = st_geometry(polygons))
+
         }} 
 
+        # 必ずsfオブジェクトに戻す
+        polygons <- st_as_sf(polygons)
         # 結果を出力
-        # ヘッダーに結果を追加
-        result_txt <- c(result_txt, "", test_result)
+        st_write(polygons, "{output_poly_path}", delete_dsn = TRUE)
 
-        cat(result_txt, sep="\n")
-
-        # 書き出し
-        if ("{output}" != "") {{
-            writeLines(result_txt, "{output}")
-            }}
+        
         """
                 
                 
@@ -261,37 +238,61 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
 
         # Rスクリプトを実行
         result = subprocess.run([rscript_path, r_script_file], capture_output=True, text=True)
-        if result.returncode != 0:
-            raise QgsProcessingException(f"R実行中にエラー:\n{result.stderr}")
+        if result.returncode != 0 or 'Error' in result.stderr:
+            raise QgsProcessingException(f"R実行中にエラー:\n{result.stderr}\n{result.stdout}")
 
-        feedback.pushInfo("=== GISA Statistics Result ===\n" + result.stdout)
+        feedback.pushInfo("=== LISA Statistics Result ===\n" + result.stdout)
         feedback.pushInfo("=============================")
 
+        # Rが書き出したポリゴンを読み込み
+        poly_layer = QgsVectorLayer(output_poly_path, "LISA_Polygons", "ogr")
+        if poly_layer.isValid():
+            sink_poly, poly_id = self.parameterAsSink(
+                parameters,
+                self.OUTPUT_POLYGONS,
+                context,
+                poly_layer.fields(),
+                QgsWkbTypes.MultiPolygon,  
+                poly_layer.crs()
+            )
+            if sink_poly:
+                for feat in poly_layer.getFeatures():
+                    sink_poly.addFeature(feat, QgsFeatureSink.FastInsert)
+        else:
+            feedback.reportError("出力ポリゴンレイヤの読み込みに失敗しました。")
+
+
+        # 一時ファイルを削除
         os.remove(r_script_file)
         if is_temp and os.path.exists(input_path):
             os.remove(input_path)
-        
-        return {}
+
+
+        result_dict = {}
+        if 'poly_id' in locals():
+            result_dict[self.OUTPUT_POLYGONS] = poly_id
+
+        return result_dict
 
     def name(self):
-        return 'gisaknearneigh'
+        return 'lisaknearneigh'
 
     def icon(self):
-        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_gisa_knearneigh.png'))
+        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_lisa_knearneigh.png'))
 
 
     def displayName(self):
-        return self.tr('GISA(K-nearest neighbors)')
+        return self.tr('LISA(K-nearest neighbors)')
 
     def group(self):
-        return self.tr('Global Indicator of Spatial Association')
+        return self.tr('Local Indicator of Spatial Association')
 
     def groupId(self):
-        return 'rgisa'
+        return 'rlisa'
 
 
     def tr(self, string):
         return QCoreApplication.translate('Processing', string)
 
     def createInstance(self):
-        return GISAKnearneighAlgorithm()
+        return LISAKnearneighAlgorithm()

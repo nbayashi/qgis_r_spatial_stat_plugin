@@ -39,6 +39,7 @@ from .gisa.gisa_knearneigh_algorithm import GISAKnearneighAlgorithm
 from .gisa.gisa_dnearneigh_algorithm import GISADnearneighAlgorithm
 from .lisa.lisa_adjacency_matrix_algorithm import LISAAdjacencyMatrixAlgorithm
 from .lisa.lisa_dnearneigh_algorithm import LISADnearneighAlgorithm
+from .lisa.lisa_knearneigh_algorithm import LISAKnearneighAlgorithm
 
 
 class AdjacencyMatrixProvider(QgsProcessingProvider):
@@ -70,6 +71,7 @@ class AdjacencyMatrixProvider(QgsProcessingProvider):
         # add LISA algorithms
         self.addAlgorithm(LISAAdjacencyMatrixAlgorithm())
         self.addAlgorithm(LISADnearneighAlgorithm())
+        self.addAlgorithm(LISAKnearneighAlgorithm())
         # add additional algorithms here
         # self.addAlgorithm(MyOtherAlgorithm())
 
