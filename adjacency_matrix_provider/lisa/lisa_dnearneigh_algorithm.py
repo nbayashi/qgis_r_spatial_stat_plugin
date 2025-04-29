@@ -8,7 +8,6 @@
         copyright            : (C) 2025 by nbayashi
         email                : naoya_nstyle@hotmail.co.jp
  ***************************************************************************/
-
  """
 
 __author__ = 'nbayashi'
@@ -49,7 +48,6 @@ class LISADnearneighAlgorithm(QgsProcessingAlgorithm):
     STATISTICS_TYPE = 'STATISTICS_TYPE'
     D_MIN = 'D_MIN'
     D_MAX = 'D_MAX'
-    USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
     OUTPUT_POLYGONS = 'OUTPUT_POLYGONS'
 
 
