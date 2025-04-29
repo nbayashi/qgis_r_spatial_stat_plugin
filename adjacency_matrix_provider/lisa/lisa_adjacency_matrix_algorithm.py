@@ -9,14 +9,6 @@ R SpatialStatistics
         email                : naoya_nstyle@hotmail.co.jp
  ***************************************************************************/
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
 """
 
 __author__ = 'nbayashi'
@@ -42,7 +34,6 @@ from qgis.core import (QgsSettings,
                        QgsProcessingParameterVectorLayer,
                        QgsProcessingParameterField,
                        QgsProcessingParameterEnum,
-                       QgsProcessingParameterBoolean,
                        QgsProcessingParameterFeatureSink,
                        QgsWkbTypes)
 
@@ -52,41 +43,17 @@ from ...utils.layer_tools import get_layer_path_or_temp
 
 
 class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
-    """
-    This is an example algorithm that takes a vector layer and
-    creates a new identical one.
-
-    It is meant to be used as an example of how to create your own
-    algorithms and explain methods and variables used to do it. An
-    algorithm like this will be available in all elements, and there
-    is not need for additional work.
-
-    All Processing algorithms should extend the QgsProcessingAlgorithm
-    class.
-    """
-
-    # Constants used to refer to parameters and outputs. They will be
-    # used when calling the algorithm from another algorithm, or when
-    # calling from the QGIS console.
 
     FIELD = 'FIELD'
     INPUT = 'INPUT'
     STATISTICS_TYPE = 'STATISTICS_TYPE'
     NEIGHBOR_TYPE = 'NEIGHBOR_TYPE'
-    USE_DISTANCE_DECAY = 'USE_DISTANCE_DECAY'
     OUTPUT_POLYGONS = 'OUTPUT_POLYGONS'
     OUTPUT = 'OUTPUT_'
 
 
 
     def initAlgorithm(self, config):
-        """
-        Here we define the inputs and output of the algorithm, along
-        with some other properties.
-        """
-
-        # We add the input vector features source. It can have any kind of
-        # geometry.
         self.addParameter(
             QgsProcessingParameterVectorLayer(
                 self.INPUT,
@@ -124,14 +91,6 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         )
 
 
-        self.addParameter(
-            QgsProcessingParameterBoolean(
-                name=self.USE_DISTANCE_DECAY,
-                description='Use distance-decay weights (1/d)',
-                defaultValue=False
-            )
-        )
-
 
         self.addParameter(
             QgsProcessingParameterFeatureSink(
@@ -154,7 +113,6 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # フィールド名を取得
         field_name = self.parameterAsString(parameters, self.FIELD, context)
 
-        output = self.parameterAsFile(parameters, self.OUTPUT, context)
 
         
 
@@ -165,8 +123,6 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         else:
             nb_type = "Rook"
 
-        use_distance_decay = self.parameterAsBool(parameters, 'USE_DISTANCE_DECAY', context)
-        r_use_decay = "TRUE" if use_distance_decay else "FALSE"
 
 
         # 共通: 座標（重心）
@@ -210,37 +166,17 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         {r_nb_code}
 
 
-        # nb2listw に zero.policy=TRUE をつけた場合、listw$neighbours の長さは nb に合わせて出る
-        # その代わり、重み・隣接が 0 のポリゴンも明示的に扱う必要あり
-        # 行基準化ウェイト行列
-        # 距離減衰を使うかどうか（Pythonから渡されたフラグ）
+        # 隣接行列の作成
         statistic_type <- "{r_statistic_type}"  # Pythonから渡す文字列
-
-        # 距離減衰ありの場合
-        if ({r_use_decay}) {{
-            centroids <- st_centroid(polygons)
-
-            if (statistic_type == "Local Getis-Ord G*") {{
-                nb_self <- include.self(nb)
-                glist <- nbdists(nb_self, centroids)   # ← nb_selfで作り直す
-                glist <- lapply(glist, function(x) 1/x)
-                listw <- nb2listw(nb_self, glist=glist, style="W", zero.policy=TRUE)
-            }} else {{
-                glist <- nbdists(nb, centroids)
-                glist <- lapply(glist, function(x) 1/x)
-                listw <- nb2listw(nb, glist=glist, style="W", zero.policy=TRUE)
-            }}
+        if (statistic_type == "Local Getis-Ord G") {{
+            listw <- nb2listw(nb, style="B", zero.policy=TRUE)
+        }} else if (statistic_type == "Local Getis-Ord G*") {{
+            nb_self <- include.self(nb)
+            listw <- nb2listw(nb_self, style="B", zero.policy=TRUE)
         }} else {{
-            # 距離減衰なしの場合
-            if (statistic_type == "Local Getis-Ord G") {{
-                listw <- nb2listw(nb, style="B", zero.policy=TRUE)
-            }} else if (statistic_type == "Local Getis-Ord G*") {{
-                nb_self <- include.self(nb)
-                listw <- nb2listw(nb_self, style="B", zero.policy=TRUE)
-            }} else {{
-                listw <- nb2listw(nb, style="W", zero.policy=TRUE)
-            }}
+            listw <- nb2listw(nb, style="W", zero.policy=TRUE)
         }}
+        
 
 
 
@@ -295,9 +231,6 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # 結果を出力
         st_write(polygons, "{output_poly_path}", delete_dsn = TRUE)
 
-        cat("==== ポリゴンのジオメトリ存在チェック ====\n")
-        print(st_is_empty(polygons))
-        cat("==== チェック終了 ====\n")
 
         """
                 
@@ -346,23 +279,12 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         return result_dict
 
     def name(self):
-        """
-        Returns the algorithm name, used for identifying the algorithm. This
-        string should be fixed for the algorithm, and must not be localised.
-        The name should be unique within each provider. Names should contain
-        lowercase alphanumeric characters only and no spaces or other
-        formatting characters.
-        """
         return 'lisaadjacencymatrix'
     
     def icon(self):
         return QIcon(os.path.join(os.path.dirname(__file__), 'icon_lisa_adjacency_matrix.png'))
 
     def displayName(self):
-        """
-        Returns the translated algorithm name, which should be used for any
-        user-visible display of the algorithm name.
-        """
         return self.tr('LISA(Adjacency matrix)')
 
     def group(self):
