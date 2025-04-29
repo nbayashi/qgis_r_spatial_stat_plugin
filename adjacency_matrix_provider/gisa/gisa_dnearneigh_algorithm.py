@@ -20,7 +20,6 @@ __copyright__ = '(C) 2025 by nbayashi'
 __revision__ = '$Format:%H$'
 import subprocess
 import os
-import uuid
 
 import tempfile
 
@@ -28,7 +27,6 @@ from qgis.PyQt.QtCore import QCoreApplication
 from qgis.core import (QgsSettings,
                        QgsProcessing,
                        QgsProcessingException,
-                       QgsVectorFileWriter,
                        QgsProcessingAlgorithm,
                        QgsProcessingParameterVectorLayer,
                        QgsProcessingParameterField,
@@ -189,9 +187,10 @@ class GISADnearneighAlgorithm(QgsProcessingAlgorithm):
             centroids <- st_centroid(polygons)
             glist <- nbdists(nb, centroids)
             glist <- lapply(glist, function(x) 1/x)
-
             if (statistic_type == "Getis-Ord G*") {{
                 nb_self <- include.self(nb)
+                glist <- nbdists(nb_self, centroids)
+                glist <- lapply(glist, function(x) ifelse(x == 0, 1e-6, 1 / x))
                 listw <- nb2listw(nb_self, glist=glist, style="W", zero.policy=TRUE)
             }} else {{
                 listw <- nb2listw(nb, glist=glist, style="W", zero.policy=TRUE)

@@ -9,14 +9,6 @@ R SpatialStatistics
         email                : naoya_nstyle@hotmail.co.jp
  ***************************************************************************/
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
 """
 
 __author__ = 'nbayashi'
@@ -28,7 +20,6 @@ __copyright__ = '(C) 2025 by nbayashi'
 __revision__ = '$Format:%H$'
 import subprocess
 import os
-import uuid
 
 import tempfile
 
@@ -36,7 +27,6 @@ from qgis.PyQt.QtCore import QCoreApplication
 from qgis.core import (QgsSettings,
                        QgsProcessing,
                        QgsProcessingException,
-                       QgsVectorFileWriter,
                        QgsProcessingAlgorithm,
                        QgsProcessingParameterVectorLayer,
                        QgsProcessingParameterField,
@@ -50,22 +40,6 @@ from ...utils.layer_tools import get_layer_path_or_temp
 
 
 class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
-    """
-    This is an example algorithm that takes a vector layer and
-    creates a new identical one.
-
-    It is meant to be used as an example of how to create your own
-    algorithms and explain methods and variables used to do it. An
-    algorithm like this will be available in all elements, and there
-    is not need for additional work.
-
-    All Processing algorithms should extend the QgsProcessingAlgorithm
-    class.
-    """
-
-    # Constants used to refer to parameters and outputs. They will be
-    # used when calling the algorithm from another algorithm, or when
-    # calling from the QGIS console.
 
     FIELD = 'FIELD'
     INPUT = 'INPUT'
@@ -77,13 +51,6 @@ class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
 
     def initAlgorithm(self, config):
-        """
-        Here we define the inputs and output of the algorithm, along
-        with some other properties.
-        """
-
-        # We add the input vector features source. It can have any kind of
-        # geometry.
         self.addParameter(
             QgsProcessingParameterVectorLayer(
                 self.INPUT,
@@ -219,9 +186,10 @@ class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
             centroids <- st_centroid(polygons)
             glist <- nbdists(nb, centroids)
             glist <- lapply(glist, function(x) 1/x)
-
             if (statistic_type == "Getis-Ord G*") {{
                 nb_self <- include.self(nb)
+                glist <- nbdists(nb_self, centroids)
+                glist <- lapply(glist, function(x) ifelse(x == 0, 1e-6, 1 / x))
                 listw <- nb2listw(nb_self, glist=glist, style="W", zero.policy=TRUE)
             }} else {{
                 listw <- nb2listw(nb, glist=glist, style="W", zero.policy=TRUE)
@@ -291,23 +259,12 @@ class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         return {}
 
     def name(self):
-        """
-        Returns the algorithm name, used for identifying the algorithm. This
-        string should be fixed for the algorithm, and must not be localised.
-        The name should be unique within each provider. Names should contain
-        lowercase alphanumeric characters only and no spaces or other
-        formatting characters.
-        """
         return 'gisaadjacencymatrix'
     
     def icon(self):
         return QIcon(os.path.join(os.path.dirname(__file__), 'icon_gisa_adjacency_matrix.png'))
 
     def displayName(self):
-        """
-        Returns the translated algorithm name, which should be used for any
-        user-visible display of the algorithm name.
-        """
         return self.tr('GISA(Adjacency matrix)')
 
     def group(self):
