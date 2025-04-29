@@ -271,7 +271,7 @@ class GISADnearneighAlgorithm(QgsProcessingAlgorithm):
         return 'gisadnearneigh'
     
     def icon(self):
-        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_dnearneigh.png'))
+        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_gisa_dnearneigh.png'))
 
 
     def displayName(self):

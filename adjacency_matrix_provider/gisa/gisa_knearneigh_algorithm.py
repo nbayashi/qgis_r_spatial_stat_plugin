@@ -277,7 +277,7 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
         return 'gisaknearneigh'
 
     def icon(self):
-        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_knearneigh.png'))
+        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_gisa_knearneigh.png'))
 
 
     def displayName(self):

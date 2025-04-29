@@ -310,7 +310,7 @@ class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         return 'gisaadjacencymatrix'
     
     def icon(self):
-        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_adjacency_matrix.png'))
+        return QIcon(os.path.join(os.path.dirname(__file__), 'icon_gisa_adjacency_matrix.png'))
 
     def displayName(self):
         """
