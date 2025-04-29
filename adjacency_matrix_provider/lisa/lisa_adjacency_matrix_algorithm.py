@@ -49,7 +49,6 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
     STATISTICS_TYPE = 'STATISTICS_TYPE'
     NEIGHBOR_TYPE = 'NEIGHBOR_TYPE'
     OUTPUT_POLYGONS = 'OUTPUT_POLYGONS'
-    OUTPUT = 'OUTPUT'
 
 
 
@@ -91,7 +90,6 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         )
 
 
-
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 name=self.OUTPUT_POLYGONS,
@@ -118,10 +116,6 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
         queen = self.parameterAsEnum(parameters, 'NEIGHBOR_TYPE', context) == 0  # True if Queen
         nb_queen = str(queen).upper()  # R側に渡す用
-        if queen:
-            nb_type = "Queen"
-        else:
-            nb_type = "Rook"
 
 
 
@@ -135,7 +129,6 @@ class LISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
 
         # 入力レイヤを一時GPKGとして保存
         input_path, is_temp = get_layer_path_or_temp(input_layer)
-        input_layer_path = input_path.replace("\\", "/")
         
         # 出力先（Rが書き出す）
         output_poly_path = os.path.join(tempfile.gettempdir(), f"output_neighbors_{uuid.uuid4().hex}.gpkg")
