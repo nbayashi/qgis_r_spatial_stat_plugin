@@ -10,7 +10,10 @@
 
 さらに、**距離減衰（1/d）重み**のオプションを指定して、行基準化された空間重み行列を `.csv` として出力することも可能です。
 
+また、空間自己相関統計量（GISA、LISA）の計算にも対応しています。
+
 本プラグインは、内部的に **Rスクリプトと `spdep` パッケージ等**を用いて処理を行っています。
+事前にRのインストールとQGIS上でのRのパスの設定が必要になります。
 
 ---
 
@@ -89,7 +92,34 @@ QGIS メニューから：[設定] → [オプション] → [R Runner] タブ �
 - 結果はプロセッシング結果パネルに表示され、必要に応じてテキストファイルとしてエクスポートも可能です。
 ---
 
-
+## Local Indicators of Spatial Association (LISA)
+- 入力レイヤと属性フィールドに基づき、各オブジェクト単位で局所的な空間自己相関統計量を計算します。
+![lisa_img](image/README/lisa_img.png)
+- 対応する指標：
+  - Local Moran’s I
+  - Local Getis-Ord G
+  - Local Getis-Ord G*
+- クイーン型、ルーク型、距離ベース、k近傍それぞれに対応しています。
+- 出力は、統計量の値やクラスタ情報を付加したポリゴンレイヤとして保存されます。
+![lisa_table](image/README/lisa_table.png)
+出力される属性は以下の通りです。
+- Local Moran’s I
+  - Ii：ローカルモランI統計量
+  - E：期待値。空間的にランダムだと仮定した時の理想的なローカルモランI統計量の平均。普通は0付近
+  - Var：分散：期待値に対するばらつきの大きさ。どれくらいIiがランダムにぶれるかの指標
+  - Z：Zスコア。E.Ii（期待されるランダム）と比べてIiがどれくらい離れているか
+  - Pr_z：Zスコアに基づくP値
+  - clus_mean：平均に基づくクラスタ分類
+  - clus_median：中央値に基づくクラスタ分類
+  - clus_pysal：PySALに基づくクラスタ分類
+- Local Getis-Ord G
+  - Gi：G統計量
+  - Pr_z：P値
+- Local Getis-Ord G*
+  - Gi：G*統計量
+  - Pr_z：P値
+  - clus_pysal：クラスタ分類
+---
 ## 必要なRパッケージ
 
 初回実行時に自動インストールされますが、以下のパッケージが使用されます：
@@ -194,6 +224,38 @@ Distance-decay weights can be enabled optionally.
   - Global Getis-Ord G*
 - The computation adapts to the selected neighbor method (Queen, Rook, Distance-based, K-nearest).
 - Results are displayed in the Processing log and optionally exported as a .txt file.
+
+---
+
+## Local Indicators of Spatial Association (LISA)
+- Calculates local spatial autocorrelation statistics for each feature based on a given attribute field.
+![lisa_img](image/README/lisa_img.png)
+- Supported statistics:
+  - Local Moran’s I
+  - Local Getis-Ord G
+  - Local Getis-Ord G*
+- Compatible with Queen/Rook, Distance-based, and K-nearest neighbor methods.
+- Outputs a new polygon layer with statistical results.
+
+![lisa_table](image/README/lisa_table.png)
+Output attribute fields
+- Local Moran’s I
+  - Ii：Local Moran窶冱 I statistic value
+  - E：Expected value of Ii
+  - Var：Variance of Ii
+  - Z：Z-score
+  - Pr_z：p-value corresponding to Z
+  - clus_mean：Cluster classification based on mean (e.g., Low-Low)
+  - clus_median：Cluster classification based on median
+  - clus_pysal：Cluster classification based on PySAL rules
+- Local Getis-Ord G
+  - Gi：Local Getis-Ord G statistic value
+  - Pr_z：P value
+- Local Getis-Ord G*
+  - Gi：Local Getis-Ord G* statistic value
+  - Pr_z：Pvalue
+  - clus_pysal：Hot spot / Cold spot classification for G*
+
 
 ---
 
