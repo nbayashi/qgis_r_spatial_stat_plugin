@@ -119,16 +119,7 @@ class GISAKnearneighAlgorithm(QgsProcessingAlgorithm):
         )
 
 
-    def get_layer_path_or_temp(self, layer):
-        # ファイルベースなら直接返す
-        if layer.storageType().lower() in ["esri shapefile", "gpkg", "geojson", "geopackage"]:
-            return layer.source(), False
-        else:
-            # それ以外なら一時GPKGにエクスポート
-            temp_path = os.path.join(tempfile.gettempdir(), f"input_polygons_{uuid.uuid4().hex}.gpkg")
-            QgsVectorFileWriter.writeAsVectorFormat(layer, temp_path, "utf-8", layer.crs(), "GPKG")
-            return temp_path, True
-       
+
        
 
     def processAlgorithm(self, parameters, context, feedback):
