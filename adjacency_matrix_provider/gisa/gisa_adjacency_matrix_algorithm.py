@@ -8,7 +8,6 @@ R SpatialStatistics
         copyright            : (C) 2025 by nbayashi
         email                : naoya_nstyle@hotmail.co.jp
  ***************************************************************************/
-
 """
 
 __author__ = 'nbayashi'
