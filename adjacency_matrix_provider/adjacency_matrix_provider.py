@@ -66,7 +66,7 @@ class AdjacencyMatrixProvider(QgsProcessingProvider):
         return self.tr('R Spatial Statistics')
 
     def icon(self):
-        path = (Path(__file__).parent / "../r_spatial_stat_icon.png").resolve()
+        path = (Path(__file__).parent / "../icon.png").resolve()
         return QIcon(str(path))
     
 
