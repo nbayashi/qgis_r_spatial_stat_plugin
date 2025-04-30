@@ -10,11 +10,9 @@ version=0.1
 author=nbayashi
 email=naoya_nstyle@hotmail.co.jp
 
-about=Queen型 / Rook型 の隣接関係、距離ベース（D-near Neighbors）、k近傍（K-nearest neighbors）に基づく 近接行列（Spatial Weight Matrix） を生成できるプラグインです。また、空間自己相関統計量（GISA、LISA）の計算にも対応しています。本プラグインは、内部的に Rスクリプトと spdep パッケージ等を用いて処理を行っています。 事前にRのインストールとQGIS上でのRのパスの設定が必要になります。.
+about=Queen型 / Rook型 の隣接関係、距離ベース（D-near Neighbors）、k近傍（K-nearest neighbors）に基づく 近接行列（Spatial Weight Matrix） を生成できるプラグインです。また、空間自己相関統計量（GISA、LISA）の計算にも対応しています。本プラグインは、内部的に Rスクリプトと spdep パッケージ等を用いて処理を行っています。 事前にRのインストールとQGIS上でのRのパスの設定が必要になります。
 
 
-tracker=http://bugs
-repository=http://repo
 # End of mandatory metadata
 
 # Recommended items:
@@ -26,8 +24,6 @@ hasProcessingProvider=yes
 # Tags are comma separated with spaces allowed
 tags=R, statistics
 
-homepage=http://homepage
-category=Analysis
 icon=icon.png
 # experimental flag
 experimental=False
@@ -41,7 +37,7 @@ deprecated=False
 # plugin_dependencies=
 
 Category of the plugin: Raster, Vector, Database or Web
-# category=
+category=Vector
 
 # If the plugin can run on QGIS Server.
 server=False
