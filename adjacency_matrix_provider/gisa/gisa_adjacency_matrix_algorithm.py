@@ -152,13 +152,30 @@ class GISAAdjacencyMatrixAlgorithm(QgsProcessingAlgorithm):
         # Rコードを生成
         r_code = f"""
         # パッケージ確認＆読み込み
+                # 必要なパッケージ
         packages <- c("sf", "spdep", "dplyr", "classInt")
-        for (pkg in packages) {{
-            if (!requireNamespace(pkg, quietly = TRUE)) {{
-                install.packages(pkg, repos = "https://cloud.r-project.org")
-            }}
-            library(pkg, character.only = TRUE)
+
+        # ユーザーライブラリパスを取得（なければ作成）
+        user_lib <- Sys.getenv("R_LIBS_USER")
+        if (!dir.exists(user_lib)) {{
+        dir.create(user_lib, recursive = TRUE)
         }}
+
+        # libPaths をユーザー用に変更
+        .libPaths(user_lib)
+
+        # パッケージの読み込みとインストール
+        for (pkg in packages) {{
+        if (!requireNamespace(pkg, quietly = TRUE)) {{
+            tryCatch({{
+            install.packages(pkg, repos = "https://cloud.r-project.org", lib = user_lib)
+            }}, error = function(e) {{
+            message(sprintf("パッケージ '%s' のインストールに失敗しました: %s", pkg, e$message))
+            }})
+        }}
+        library(pkg, character.only = TRUE)
+        }}
+
 
         # 入力読み込み
         polygons <- st_read("{input_path}")
